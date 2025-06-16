@@ -113,11 +113,11 @@ int main(int argc, char* argv[]) {
     cudaStream_t stream;
     cudaStreamCreate(&stream);
 
-    std::string model_path = "../data/yolov11m-face-dynamic.trt";
+    std::string model_path = "/app/models/yolov11m-face-dynamic.trt";
     InferencePipeline detector(model_path, spdlog::level::debug);
     logger->debug("Instanciated detector from: {}", model_path);
 
-    std::string embedding_model_path = "../data/facenet-dynamic.trt";
+    std::string embedding_model_path = "/app/models/facenet-dynamic.trt";
     RecognitionPipeline embedder(embedding_model_path);
     logger->debug("Instanciated embedder from: {}", embedding_model_path);
 
@@ -178,7 +178,10 @@ int main(int argc, char* argv[]) {
         bar.set_progress(current_frame);
     }
 
-    export_detections(all_detections, dst);
+    if (dst != "dummy") {
+        export_detections(all_detections, dst);
+    }
+
 
     auto end_time = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;

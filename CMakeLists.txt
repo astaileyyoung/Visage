@@ -5,7 +5,7 @@ add_definitions(-D__STDC_CONSTANT_MACROS)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 
 find_package(OpenCV REQUIRED COMPONENTS core highgui imgproc dnn cudacodec videoio cudaimgproc)
 message(STATUS "OpenCV_LIBS: ${OpenCV_LIBS}")
@@ -29,11 +29,21 @@ set(ENV{CUDA_PATH} ${CUDA_TOOLKIT_ROOT_DIR})
 # CUDA runtime for libtorch
 find_library(CUDA_CUDART_LIBRARY cudart HINTS ${CUDA_TOOLKIT_ROOT_DIR}/lib64 /usr/local/cuda/lib64)
 
+set(Torch_DIR /opt/libtorch/libtorch/share/cmake/Torch)
 find_package(Torch REQUIRED)
 
 set(TENSOR_DIR "/opt/TensorRT-8.6.1.6")
 link_directories(${TENSOR_DIR}/lib)
 find_path(TensorRT_INCLUDE_DIR NvInfer.h HINTS ${TENSOR_DIR} PATH_SUFFIXES include)
+
+add_library(NVCUVID SHARED IMPORTED)
+set_property(TARGET NVCUVID PROPERTY IMPORTED_LOCATION "/usr/local/lib/libnvcuvid.so")
+
+add_library(NVENCODE SHARED IMPORTED)
+set_property(TARGET NVENCODE PROPERTY IMPORTED_LOCATION "/usr/local/lib/libnvidia-encode.so")
+
+add_subdirectory(include/spdlog)
+add_subdirectory(include/indicators)
 
 # Macro for adding targets
 function(add_videoreader_target name sources)
@@ -57,9 +67,13 @@ target_link_libraries(${name} PRIVATE
     cudart
     ${CUDA_LIBRARIES}
     ${TORCH_LIBRARIES}
+    spdlog::spdlog 
+    indicators
+    NVCUVID
+    NVENCODE
 )
 endfunction()
 
 add_compile_options(-Wno-deprecated-declarations)
 
-add_videoreader_target(main "src/main.cpp;src/pipeline.cpp;src/utils.cpp;src/image_processor.cpp;src/trt_infer.cpp;src/ops.cpp")
+add_videoreader_target(visage "src/main.cpp;src/pipeline.cpp;src/utils.cpp;src/image_processor.cpp;src/trt_infer.cpp;src/ops.cpp")
