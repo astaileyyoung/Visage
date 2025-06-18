@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE Release)
 
+set(OpenCV_DIR "/usr/local/lib/cmake/opencv4")
 find_package(OpenCV REQUIRED COMPONENTS core highgui imgproc dnn cudacodec videoio cudaimgproc)
 message(STATUS "OpenCV_LIBS: ${OpenCV_LIBS}")
 

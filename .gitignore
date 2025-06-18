@@ -4,3 +4,5 @@ build
 models
 scripts/sample_videos
 scripts/sample_videos.zip
+.vscode
+bin

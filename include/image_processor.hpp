@@ -67,7 +67,7 @@ class ImageProcessor {
                            bool auto_=false,
                            bool scale_fill=false);
         torch::Tensor libtorch_nms(const torch::Tensor& boxes_xyxy, const torch::Tensor& scores, float iou_threshold);
-        std::vector<torch::Tensor> nms(cv::Mat predictions, 
+        std::vector<torch::Tensor> nms(torch::Tensor predictions, 
                                        int nc=0, 
                                        float conf_thresh=0.25,
                                        float iou_thresh=0.45,

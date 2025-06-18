@@ -20,8 +20,8 @@ std::vector<Detection> InferencePipeline::run(const cv::cuda::GpuMat& img,
     int w = params.target_width;
     int h = params.target_height;
 
-    std::vector<cv::Mat> raw_output = trt.infer(batch, c, h, w, stream);
-    Predictions pred = {raw_output[0], frame_num};
+    torch::Tensor raw_output = trt.infer(batch, c, h, w, stream);
+    Predictions pred = {raw_output, frame_num};
 
     return proc.postprocess(pred);
 }
@@ -31,14 +31,14 @@ RecognitionPipeline::RecognitionPipeline(const std::string& model_path,
                                          spdlog::level::level_enum log_level)
                                          : trt(model_path), proc(log_level) {}
 
-std::vector<cv::Mat> RecognitionPipeline::run(cv::cuda::GpuMat& img,
+std::vector<torch::Tensor> RecognitionPipeline::run(cv::cuda::GpuMat& img,
                                  std::vector<Detection> detections,
                                  const PreprocessParams& params,
                                  int frame_num,
                                  cudaStream_t stream) {
     float* buffer = static_cast<float*>(trt.getDeviceBuffer());
 
-    std::vector<cv::Mat> raw_output;
+    std::vector<torch::Tensor> embeddings;
 
     int batch = detections.size();
     if (batch > 0) {
@@ -52,9 +52,13 @@ std::vector<cv::Mat> RecognitionPipeline::run(cv::cuda::GpuMat& img,
         for (int i = 0; i < batch; ++i) {
             Detection det = detections[i];
             cv::cuda::GpuMat face = extract_face(img, det);
-            proc.preprocess(img, params, buffer + i * single_input_numel, stream);
+            proc.preprocess(face, params, buffer + i * single_input_numel, stream);
         }
-        raw_output = trt.infer(batch, h, w, c, stream);
+        torch::Tensor raw_output = trt.infer(batch, h, w, c, stream);
+        for (int i = 0; i < batch; ++i) {
+            torch::Tensor embedding = raw_output[i].clone();
+            embeddings.push_back(embedding);
+        }
     }
-    return raw_output;
+    return embeddings;
 }

@@ -1,3 +1,4 @@
+#include <torch/torch.h>
 #include <cuda_runtime_api.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/cudaarithm.hpp>
@@ -244,14 +245,13 @@ torch::Tensor ImageProcessor::libtorch_nms(const torch::Tensor& boxes_xyxy, cons
 
         // Map these local indices back to their *original indices* that need to be suppressed in the main mask.
         torch::Tensor original_indices_to_suppress;
-        // --- FIX START ---
+
         if (indices_to_suppress_local.numel() == 0) {
             // If there are no indices to suppress, the result should be an empty tensor
             original_indices_to_suppress = torch::empty({0}, effective_remaining_indices.options().dtype(torch::kLong).device(effective_remaining_indices.device()));
         } else {
             original_indices_to_suppress = effective_remaining_indices.index_select(0, indices_to_suppress_local);
         }
-        // --- FIX END ---
 
         // Mark these boxes as suppressed in the global `suppressed_mask`.
         // `index_fill_(dimension, indices, value)` fills elements at `indices` along `dimension` with `value`.
@@ -264,44 +264,43 @@ torch::Tensor ImageProcessor::libtorch_nms(const torch::Tensor& boxes_xyxy, cons
 }
 
 
-std::vector<torch::Tensor> ImageProcessor::nms(cv::Mat predictions, 
+std::vector<torch::Tensor> ImageProcessor::nms(torch::Tensor predictions, 
                                                int nc, 
                                                float conf_thresh,
                                                float iou_thresh,
                                                bool agnostic,
                                                int max_wh) {
-    long bs = predictions.size[0]; 
-    long num_features_total = predictions.size[1]; 
-    long num_boxes_per_image = predictions.size[2]; 
-    if (nc == 0) {
-        nc = predictions.size[1] - 4;
+    // Ensure predictions is on CUDA if available
+    if (torch::cuda::is_available() && !predictions.is_cuda()) {
+        predictions = predictions.to(torch::kCUDA);
     }
-    long nm = predictions.size[1] - nc - 4;
+
+    long bs = predictions.size(0); 
+    long num_features_total = predictions.size(1); 
+    long num_boxes_per_image = predictions.size(2); 
+    if (nc == 0) {
+        nc = predictions.size(1) - 4;
+    }
+    long nm = predictions.size(1) - nc - 4;
     long mi = 4 + nc; // mask start index
 
-    torch::Tensor predictions_tensor = mat_to_tensor(predictions);
-    // --- ADD OR CONFIRM THIS BLOCK IS PRESENT AND CORRECT ---
-    if (torch::cuda::is_available()) {
-        predictions_tensor = predictions_tensor.to(torch::kCUDA);
-    } 
-
-    torch::Tensor xc = predictions_tensor.narrow(
+    torch::Tensor xc = predictions.narrow(
         1,
         4,
         mi - 4
     ).amax(1).gt(conf_thresh);
 
-    torch::Device device = predictions_tensor.device(); 
+    torch::Device device = predictions.device(); 
     torch::Tensor arange_template = torch::arange(num_boxes_per_image, torch::kLong).to(device);
     std::vector<torch::Tensor> xinds_list;
-    xinds_list.reserve(predictions_tensor.sizes()[0]); // Pre-allocate memory
-    for (long i = 0; i < predictions_tensor.sizes()[0]; ++i){
+    xinds_list.reserve(predictions.sizes()[0]); // Pre-allocate memory
+    for (long i = 0; i < predictions.sizes()[0]; ++i){
         xinds_list.push_back(arange_template);
     }
     torch::Tensor xinds = torch::stack(xinds_list);
     xinds = xinds.unsqueeze(-1);
 
-    torch::Tensor transposed = predictions_tensor.transpose(-1, -2);
+    torch::Tensor transposed = predictions.transpose(-1, -2);
 
     torch::Tensor bbox_slice = transposed.narrow(transposed.dim() -1, 0, 4);
     torch::Tensor predictions_xywh = xywh2xyxy(bbox_slice);
@@ -463,10 +462,8 @@ void ImageProcessor::preprocess(const cv::cuda::GpuMat& img,
 std::vector<Detection> ImageProcessor::postprocess(Predictions pred) {
     std::vector<std::pair<torch::Tensor, float>> output;
 
-    cv::Mat predictions = pred.raw_predictions.clone();
+    torch::Tensor predictions = pred.raw_predictions.clone();
     int frame_num = pred.frame_num;
-
-    predictions.rows, predictions.cols, predictions.total(), predictions.type(), predictions.isContinuous();
 
     std::vector<torch::Tensor> boxes = nms(predictions);
     torch::Tensor detections_tensor = boxes[0];

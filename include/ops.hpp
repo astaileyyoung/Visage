@@ -9,7 +9,7 @@ struct Detection {
     float confidence;
     int frame_num; // Frame number in the video
     int face_num; // Face number in the frame, useful for tracking
-    cv::Mat embedding;
+    torch::Tensor embedding;
     cv::Mat original_image;
     bool is_end = false;
 };
@@ -35,7 +35,7 @@ struct Padded {
 
 
 struct Predictions {
-    cv::Mat raw_predictions;
+    torch::Tensor raw_predictions;
     int frame_num = 0;
 };
 

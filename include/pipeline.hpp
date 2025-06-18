@@ -25,7 +25,7 @@ class RecognitionPipeline {
         RecognitionPipeline(const std::string& model_path, 
                  spdlog::level::level_enum log_level=spdlog::level::err);
 
-        std::vector<cv::Mat> run(cv::cuda::GpuMat& img, 
+        std::vector<torch::Tensor> run(cv::cuda::GpuMat& img, 
                     std::vector<Detection> detections,
                     const PreprocessParams& params,
                     int frame_num = 0,

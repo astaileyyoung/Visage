@@ -1,5 +1,6 @@
 #pragma once
 
+#include <torch/torch.h>
 #include <cuda_runtime.h> 
 #include <NvInfer.h>
 #include <NvInferRuntime.h>
@@ -21,7 +22,7 @@ class TRTInfer {
         void setBatchSize(int batch);
         int getBatchSize() const { return batchSize; }
 
-        std::vector<cv::Mat> infer(int batch, int c, int h, int w, cudaStream_t stream);
+        torch::Tensor infer(int batch, int c, int h, int w, cudaStream_t stream);
     
     private:
         std::vector<char> loadEngine(const std::string& enginePath);

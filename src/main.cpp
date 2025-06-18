@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <dlfcn.h>
 
 #include <torch/torch.h>
 
@@ -76,8 +77,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    setup_logging(parse_log_level(log_level));
+    spdlog::level::level_enum level = parse_log_level(log_level);
+    setup_logging(level);
     auto logger = spdlog::get("main");
+
+    logger->debug(cv::getBuildInformation());
     
     logger->debug("Num args: {}", argc);
 
@@ -114,7 +118,7 @@ int main(int argc, char* argv[]) {
     cudaStreamCreate(&stream);
 
     std::string model_path = "/app/models/yolov11m-face-dynamic.trt";
-    InferencePipeline detector(model_path, spdlog::level::debug);
+    InferencePipeline detector(model_path, level);
     logger->debug("Instanciated detector from: {}", model_path);
 
     std::string embedding_model_path = "/app/models/facenet-dynamic.trt";
@@ -136,7 +140,7 @@ int main(int argc, char* argv[]) {
     };
 
     auto start_time = std::chrono::steady_clock::now();
-    logger->info("Starting detectionon {}", src);
+    logger->info("Starting detection");
     logger->debug("Frameskip: {}", frameskip);
     logger->debug("Show: {}", show);
     std::vector<Detection> all_detections;
@@ -150,9 +154,9 @@ int main(int argc, char* argv[]) {
         if (current_frame % frameskip == 0) {
             detections = detector.run(gpuFrame, detection_params, current_frame, stream);
             if (detections.size() > 0) {
-                std::vector<cv::Mat> embeddings = embedder.run(gpuFrame, detections, recognition_params, current_frame, stream);
+                std::vector<torch::Tensor> embeddings = embedder.run(gpuFrame, detections, recognition_params, current_frame, stream);
                 for (int i = 0; i < embeddings.size(); ++i) {
-                    cv::Mat embedding = embeddings[i];
+                    torch::Tensor embedding = embeddings[i];
                     Detection det = detections[i];
                     det.embedding = embedding;
                     all_detections.push_back(det);
@@ -181,7 +185,6 @@ int main(int argc, char* argv[]) {
     if (dst != "dummy") {
         export_detections(all_detections, dst);
     }
-
 
     auto end_time = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;

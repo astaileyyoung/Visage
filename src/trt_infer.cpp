@@ -145,7 +145,9 @@ void* TRTInfer::getDeviceBuffer() {
 }
 
 
-std::vector<cv::Mat> TRTInfer::infer(int batch, int c, int h, int w, cudaStream_t stream) {
+torch::Tensor TRTInfer::infer(int batch, int c, int h, int w, cudaStream_t stream) {
+    // Revise func to return a torch::Tensor on GPU 
+    // Revise recognition pipeline to accept torch::Tensor and convert to cv::Mat
     nvinfer1::Dims4 dims(batch, c, h, w);
     context->setBindingDimensions(inputIndex, dims);
 
@@ -169,27 +171,18 @@ std::vector<cv::Mat> TRTInfer::infer(int batch, int c, int h, int w, cudaStream_
     
     context->enqueueV2(deviceBuffers.data(), stream, nullptr);
 
-    int numElements = 1;
-    for (int i = 0; i < actualOutputDims.nbDims; ++i)
-        numElements *= actualOutputDims.d[i];
-    hostBuffers[outputIndex].resize(numElements); 
-
-    int num_bytes = numElements * sizeof(float);
-    cudaError_t err = cudaMemcpyAsync(hostBuffers[outputIndex].data(),
-                    deviceBuffers[outputIndex],
-                    num_bytes, 
-                    cudaMemcpyDeviceToHost,
-                    stream);
-    if (err != cudaSuccess) {
-        printf("CUDA memcpy failed: %s\n", cudaGetErrorString(err));
-    }
     cudaStreamSynchronize(stream);
 
-    std::vector<int> new_dims;
-    for (int i = 0; i < actualOutputDims.nbDims; ++i) {
-        new_dims.push_back(actualOutputDims.d[i]);
-    }
-    float* base_ptr = hostBuffers[outputIndex].data();
-    std::vector<cv::Mat> batch_outputs = splitTensorToMats(new_dims, base_ptr);
-    return batch_outputs;
+    std::vector<int64_t> tensor_dims;
+    for (int i = 0; i < actualOutputDims.nbDims; ++i)
+        tensor_dims.push_back(actualOutputDims.d[i]);
+
+    torch::Tensor predictions_tensor = torch::from_blob(
+    deviceBuffers[outputIndex],
+    tensor_dims,
+    torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA)
+    );
+
+    torch::Tensor safe_tensor = predictions_tensor.clone();
+    return safe_tensor;
 }

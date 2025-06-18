@@ -1,3 +1,4 @@
+#include <iomanip>
 #include <filesystem>
 
 #include <opencv2/opencv.hpp>
@@ -90,6 +91,7 @@ void export_detections(const std::vector<Detection> detections,
         return;
     }
 
+    file << std::fixed << std::setprecision(9);
     file << "frame_num,face_num,x1,y1,x2,y2,confidence,embedding\n";
     for (int i = 0; i < detections.size(); ++i) {
         const Detection det = detections[i];
@@ -104,10 +106,12 @@ void export_detections(const std::vector<Detection> detections,
         file << cleanRounding(det.confidence, rounding);
         file <<",\"";
 
-        const float* emb_ptr = det.embedding.ptr<float>();
-        for (int j = 0; j < det.embedding.total(); ++j) {
-            file << emb_ptr[j];
-            if (j < det.embedding.total() - 1) file << ",";
+        torch::Tensor embedding_cpu = det.embedding.cpu().contiguous().view(-1);
+        const float* embedding_ptr = embedding_cpu.data_ptr<float>();
+        int embedding_size = embedding_cpu.numel();
+        for (int j = 0; j < embedding_size; ++j) {
+            file << embedding_ptr[j];
+            if (j < embedding_size - 1) file << ",";
         }
         file << "\"\n";
     }
