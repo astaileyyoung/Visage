@@ -3,16 +3,19 @@ A high-performance, GPU-accelerated pipeline for facial detection and recognitio
 
 
 ## Requirements
-If using the associated docker image, all Visage needs is an Nvidia GPU with updated drivers.
-Otherwise, the required libraries are listed in the install section.
-
-**Disclaimer: This has only been tested on an Nvidia GTX 1080 Ti, but any newer GPU should work as long as the drivers are current.
+- [Docker](https://docs.docker.com/get-docker/) (required)
+    - For GPU support, also install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) and the appropriate NVIDIA drivers.
 
 
 ## Install
-The simplest way to run Visage is download the docker image. Alternatively, you can build from source. However, this is a non-trivial task and would require building and linking the dependencies yourself.
+To get started, just clone the repository
+```
+git clone https://github.com/astaileyyoung/Visage.git
+```
 
-The project was built using these libraries:  
+Visage uses docker under the hood, but you can always build from source if you want. However, this is a non-trivial task and would require building and linking the dependencies yourself.
+
+The docker image was build using these libraries:  
 Cuda-11.8  
 libcudnn8  
 OpenCV-4.10     
@@ -27,34 +30,9 @@ These steps are demonstrated in the accompanying
 Dockerfile.
 
 ## Usage
-Visage is available through Docker, so first download the image
+Running Visage is simple via the included python script
 ```
-docker pull astaileyyoung/visage
-```
-
-Visage was built with GPU-accelerated decoding using the NVIDIA Video_Codec_SDK library, so you must run the image with GPU options enabled
-```
-docker run -it --rm --gpus all \
-    -e NVIDIA_DRIVER_CAPABILITIES=all \
-    -v /path/to/mount/dir \
-    visage 
-```
-
-If you need to display the video, you'll need to specify that option when running the image
-```
-docker run -it --rm --gpus all \
-    -e NVIDIA_DRIVER_CAPABILITIES=all \
-    -e DISPLAY=$DISPLAY \
-    -v /tmp/.X11-unix:/tmp/.X11-unix \
-    -v /path/to/mount/dir \
-    visage
-```
-
-This command will only work on Linux. If using a different OS, however, this command will have to be adapted to your environment.
-
-Once inside the docker environment, run Visage as so:
-```
-visage <src> [--dst <output>] [--frameskip <N>] [--log_level <LEVEL>] [--show]
+python <src> [--dst <output>] [--frameskip <N>] [--log_level <LVL>] [--show]
 ```
 
 ### Arguments
@@ -63,8 +41,15 @@ visage <src> [--dst <output>] [--frameskip <N>] [--log_level <LEVEL>] [--show]
 | `<src>`             | Path to the input video file                | Required          |
 | `--dst <output>`    | Output file path                            | Optional          |
 | `--frameskip <N>`   | Number of frames to skip                    | Optional          |
-| `--log-level <LVL>` | Logging level (e.g., 0=ERROR, 1=INFO, 2=DEBUG) | Optional       |
+| `--log_level <LVL>` | Logging level                               | Optional          |
 | `--show`            | Show video in window                        | Optional (flag)   |
+
+### Example
+```
+python /home/amos/videos/MemoriesOfMurder.mkv --dst detection.csv --log_level info --frameskip 24
+```
+
+The python script will automatically download the required docker image and build the TensorRT engines. Be aware that the docker image is quite large (~17GB), so it will take some time to download. Building the TensorRT engines also takes time, but this only happens during the first run. Subsequent runs will use the now existing docker image and the cached engines. 
 
 
 ## Benchmarks
@@ -89,7 +74,6 @@ For details on the benchmarking parameters, check out benchmarks.ipynb in notebo
 
 
 ## To Do
-- Add CPU support
 - Implement optical flow for accurate detection with frameskipping  
 - Use threading to boost performance
 - Extend batch support to detection
@@ -98,11 +82,11 @@ For details on the benchmarking parameters, check out benchmarks.ipynb in notebo
 
 
 ## Contributing
-Contributions are welcome! If you have ideas for features, improvements, bug fixes, or just want to get involved, please open an issue or pull request.
+Contributions are welcome. If you have ideas for features, improvements, bug fixes, or just want to get involved, please open an issue or pull request.
 
 I am not a professional software developer, so any help—whether it’s code, documentation, testing, or suggestions—is appreciated. If you are new to open source or need guidance, feel free to ask questions in issues.
 
-If you use Visage, we encourage you to share your benchmarking results!
+If you use Visage, we encourage you to share your benchmarking results.
 Open a [Benchmark Results Issue](https://github.com/astaileyyoung/Visage/issues/new?template=benchmark-results.yml) using the template and help build a performance database for different GPUs and systems.
 
 You can find the benchmark.py script in /scripts. Simply run the script and it will download the sample videos, perform detection/embedding, and spit out a file with the results. This file can then be uploaded through the aforementioned template.

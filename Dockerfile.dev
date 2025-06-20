@@ -14,16 +14,7 @@ RUN mkdir -p /sdk/include && mkdir -p /sdk/lib
 RUN cp Video_Codec_SDK*/Interface/*.h /sdk/include/
 RUN cp Video_Codec_SDK*/Lib/linux/stubs/x86_64/*.so /sdk/lib/
 
-# COPY Video_Codec_SDK_13.0.19/Interface/nvcuvid.h \
-#      Video_Codec_SDK_13.0.19/Interface/nvEncodeAPI.h \
-#      Video_Codec_SDK_13.0.19/Interface/cuviddec.h \
-#      /usr/local/cuda/include/
-
-# COPY Video_Codec_SDK_13.0.19/Lib/linux/stubs/x86_64/libnvcuvid.so \
-#      Video_Codec_SDK_13.0.19/Lib/linux/stubs/x86_64/libnvidia-encode.so \
-#      /usr/local/lib/
-
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04 as builder
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -142,16 +133,6 @@ RUN rm -rf build && mkdir build && cd build && cmake .. && make -j"$(nproc)"
 RUN rm -f /usr/local/lib/libnvcuvid.so /usr/local/lib/libnvcuvid.so.1 \
       /usr/local/lib/libnvidia-encode.so /usr/local/lib/libnvidia-encode.so.1
 
-#-----Final Stage -----
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
-ENV DEBIAN_FRONTEND=noninteractive
-
-RUN apt-get update && apt-get install -y \
-    wget \
-    libgtk2.0.0 libgtk-3-0 \
-    libgl1 \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
@@ -165,12 +146,6 @@ RUN conda update -n base -c defaults conda && \
     conda create -y -n visage python=3.10 numpy pip && \
     conda clean -afy && conda install -n visage -c conda-forge opencv numpy -y
 
-COPY --from=builder /usr/local/lib /usr/local/lib 
-COPY --from=builder /opt/libtorch/libtorch/lib /opt/libtorch/libtorch/lib 
-COPY --from=builder /opt/TensorRT-8.6.1.6/lib /opt/TensorRT-8.6.1.6/lib
-COPY --from=builder /opt/TensorRT-8.6.1.6/targets/x86_64-linux-gnu/bin/trtexec /usr/bin/trtexec
-COPY --from=builder /app /app
-
 ENV CONDA_DEFAULT_ENV=visage
 RUN conda init bash && \
 echo "conda activate visage" >> ~/.bashrc
@@ -183,4 +158,11 @@ ENV LD_LIBRARY_PATH=/opt/TensorRT-8.6.1.6/lib:$LD_LIBRARY_PATH
 ENV TENSORRT_DIR=/opt/TensorRT-8.6.1.6
 ENV Torch_DIR=/opt/libtorch/libtorch/share/cmake/Torch
 
-WORKDIR /app
+RUN ln -s /opt/TensorRT-8.6.1.6/targets/x86_64-linux-gnu/bin/trtexec /usr/bin/trtexec && \
+    ln -s /usr/lib/x86_64-linux-gnu/libnvcuvid.so.1 /usr/local/lib/libnvcuvid.so && \
+    ln -s /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1 /usr/local/lib/libnvidia-encode.so && \
+    rm -rf /app/models
+
+WORKDIR /app 
+# RUN rm -rf build && mkdir build && cd build && cmake .. && make -j"$(nproc)"
+
