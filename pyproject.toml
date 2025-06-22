@@ -15,5 +15,9 @@ requires-python = ">=3.8"
 dependencies = [
 ]
 
+tool.setuptools.packages.find]
+where = ["."]
+include = ["visage*"]
+
 [project.urls]
 Homepage = "https://github.com/astaileyyoung/Visage"
