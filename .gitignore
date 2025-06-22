@@ -7,3 +7,4 @@ scripts/sample_videos.zip
 .vscode
 bin
 dist
+*egg-info
