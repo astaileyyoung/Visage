@@ -24,7 +24,7 @@ classifiers = [
 Homepage = "https://github.com/astaileyyoung/Visage"
 
 [project.scripts]
-visage = "visage.core:run_visage"
+visage = "visage.core:main"
 
 
 [tool.setuptools.packages.find]
