@@ -12,7 +12,10 @@ To get started, just clone the repository
 ```
 git clone https://github.com/astaileyyoung/Visage.git
 ```
-
+Then install with pip
+```
+pip install -e .
+```
 Visage uses docker under the hood, but you can always build from source if you want. However, this is a non-trivial task and would require building and linking the dependencies yourself.
 
 The docker image was build using these libraries:  
@@ -30,26 +33,28 @@ These steps are demonstrated in the accompanying
 Dockerfile.
 
 ## Usage
-Running Visage is simple via the included python script
+Running Visage is simple
 ```
-python <src> [--dst <output>] [--frameskip <N>] [--log_level <LVL>] [--show]
+visage <src> [--dst <output>] [--frameskip <N>] [--log_level <LVL>] [--show]
 ```
 
 ### Arguments
-| Argument            | Description                                 | Required/Optional |
-|---------------------|---------------------------------------------|-------------------|
-| `<src>`             | Path to the input video file                | Required          |
-| `--dst <output>`    | Output file path                            | Optional          |
-| `--frameskip <N>`   | Number of frames to skip                    | Optional          |
-| `--log_level <LVL>` | Logging level                               | Optional          |
-| `--show`            | Show video in window                        | Optional (flag)   |
+
+| Argument            | Description                                 | Required/Optional | Default Value         |
+|---------------------|---------------------------------------------|-------------------|-----------------------|
+| `<src>`             | Path to the input video file                | Required          | —                     |
+| `--dst <output>`    | Output file path                            | Optional          | —                     |
+| `--frameskip <N>`   | Number of frames to skip                    | Optional          | 1                     |
+| `--log_level <LVL>` | Logging level                               | Optional          | info                  |
+| `--model_dir`       | Location to store cached engines            | Optional          | ~/.visage/models      |
+| `--show`            | Show video in window                        | Optional (flag)   | False (not shown)     |
 
 ### Example
 ```
-python /home/amos/videos/MemoriesOfMurder.mkv --dst detection.csv --log_level info --frameskip 24
+visage /home/amos/videos/MemoriesOfMurder.mkv --dst detection.csv --log_level info --frameskip 24
 ```
 
-The python script will automatically download the required docker image and build the TensorRT engines. Be aware that the docker image is quite large (~17GB), so it will take some time to download. Building the TensorRT engines also takes time, but this only happens during the first run. Subsequent runs will use the now existing docker image and the cached engines. 
+Running visage will automatically download the required docker image and build the TensorRT engines. Be aware that the docker image is quite large (~17GB), so it will take some time to download. Building the TensorRT engines also takes time, but this only happens during the first run. Subsequent runs will use the now existing docker image and the cached engines. 
 
 
 ## Benchmarks

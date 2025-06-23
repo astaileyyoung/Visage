@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
-import os
 import logging
 import subprocess as sp
 from pathlib import Path 
 from argparse import ArgumentParser 
+
+
+logger = logging.getLogger("pipeline")
 
 
 def load_docker_image(image='astaileyyoung/visage'):
@@ -48,8 +50,6 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     src = Path(src).absolute().resolve()
     dst = Path(dst).absolute().resolve() if dst else None
     model_dir = Path(model_dir).absolute()
-    detection_model_path = model_dir / 'yolov11m-face-dynamic.trt'
-    recognition_model_path = model_dir / 'facenet-dynamic.trt'
 
     mount_point_src = src.parent
     mount_point_dst = dst.parent if dst else None
@@ -87,28 +87,7 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     sp.run(command)
 
 
-def run_visage(src, 
-               dst,
-               image,
-               frameskip,
-               log_level,
-               show,
-               model_dir=None):
-    if not Path(src).exists():
-        logging.error(f'{src} does not exist. Exiting.')
-        exit()
-    elif Path(src).suffix not in ('.mp4', '.mkv', '.m4v', '.avi', '.mov'):
-        logging.warning(f'{Path(src).suffix} is not a valid file extension')
-
-    if dst is not None and not Path(dst).parent.exists():
-        Path(dst).parent.mkdir(parents=True)
-
-    load_docker_image()
-    model_dir = load_models(image=image, model_dir=model_dir)
-    run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
-
-
-if __name__ == '__main__':
+def run_visage():
     ap = ArgumentParser()
     ap.add_argument('src')
     ap.add_argument('--dst', default=None, type=str)
@@ -125,17 +104,29 @@ if __name__ == '__main__':
         "warning": 30,
         "error": 40
     }
-
     log_level = levels[args.log_level]
-    logging.basicConfig(
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        level=log_level,
-        datefmt='%y-%m-%d_%H:%M:%S'
-    )
-    run_visage(args.src,
-               args.dst,
-               args.image,
-               args.frameskip,
-               args.log_level,
-               args.show,
-               model_dir=args.model_dir)
+
+    handler = logging.StreamHandler()
+    handler.setLevel(log_level)
+    formatter = logging.Formatter('[%(levelname)s]: %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)    
+
+    src = Path(args.src)
+    dst = Path(args.dst) if args.dst else None
+    if not src.exists():
+        logging.error(f'{str(src)} does not exist. Exiting.')
+        exit()
+    elif src.suffix not in ('.mp4', '.mkv', '.m4v', '.avi', '.mov'):
+        logging.warning(f'{src.suffix} is not a valid file extension')
+
+    if dst is not None and not dst.parent.exists():
+        dst.parent.mkdir(parents=True)
+
+    load_docker_image()
+    model_dir = load_models(image=args.image, model_dir=args.model_dir)
+    run_docker_image(src, dst, args.image, args.frameskip, args.log_level, args.show, model_dir)
+
+
+if __name__ == '__main__':
+    run_visage()
