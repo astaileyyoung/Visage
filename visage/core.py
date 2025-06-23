@@ -21,13 +21,13 @@ def load_docker_image(image='astaileyyoung/visage'):
     ]
     result = sp.run(command, capture_output=True, text=True)
     if result.stdout.strip():
-        logging.info('Docker image already exists. Skipping download.')
+        logger.debug('Docker image already exists. Skipping download.')
         return 
     else:
-        logging.info('Downloading docker image')
-        pull_result = sp.run(['docker', 'pull', image])
+        logger.info('Downloading docker image')
+        pull_result = sp.run(['docker', 'pull', image], stdout=sp.DEVNULL, stderr=sp.DEVNULL)
         pull_result.check_returncode()
-        logging.info(f'Docker image {image} pulled successfully.')
+        logger.info(f'Docker image {image} pulled successfully.')
 
 
 def load_models(image='astaileyyoung/visage', model_dir=None):
@@ -45,7 +45,7 @@ def load_models(image='astaileyyoung/visage', model_dir=None):
         image,
         'python', '/app/scripts/prepare_models.py'
     ]
-    sp.run(command, check=True)
+    sp.run(command, check=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     return model_dir
 
 
@@ -94,7 +94,8 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
         proc = sp.Popen(command, preexec_fn=os.setsid)
         proc.wait()
     except KeyboardInterrupt:
-        sp.run(['docker', 'stop', '-t', '1', container_name], capture_output=True, text=True, timeout=30)
+        logger.info('Exiting docker.')
+        sp.run(['docker', 'stop', '-t', '1', container_name], stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=30)
         proc.terminate()
         proc.wait()
 
@@ -114,10 +115,10 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
     src = Path(src)
     dst = Path(dst) if dst else None
     if not src.exists():
-        logging.error(f'{str(src)} does not exist. Exiting.')
+        logger.error(f'{str(src)} does not exist. Exiting.')
         exit()
     elif src.suffix not in ('.mp4', '.mkv', '.m4v', '.avi', '.mov'):
-        logging.warning(f'{src.suffix} is not a valid file extension')
+        logger.warning(f'{src.suffix} is not a valid file extension')
 
     if dst is not None and not dst.parent.exists():
         dst.parent.mkdir(parents=True)
