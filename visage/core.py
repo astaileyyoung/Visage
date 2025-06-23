@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-
+import os
 import logging
 import subprocess as sp
 from pathlib import Path 
@@ -25,9 +25,12 @@ def load_docker_image(image='astaileyyoung/visage'):
         logging.info(f'Docker image {image} pulled successfully.')
 
 
-def load_models(image='astaileyyoung/visage', model_dir='models'):
-    model_dir = Path(model_dir).absolute()
-    model_dir.mkdir(exist_ok=True)
+def load_models(image='astaileyyoung/visage', model_dir=None):
+    if model_dir is None:
+        model_dir = Path.home() / '.visage' / 'models'
+    else:
+        model_dir = Path(model_dir).absolute()
+    model_dir.mkdir(exist_ok=True, parents=True)
 
     command = [
         'docker', 'run', '--rm',
@@ -38,12 +41,16 @@ def load_models(image='astaileyyoung/visage', model_dir='models'):
         'python', '/app/scripts/prepare_models.py'
     ]
     sp.run(command, check=True)
+    return model_dir
 
 
-def run_docker_image(src, dst, image, frameskip, log_level, show):
+def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     src = Path(src).absolute().resolve()
     dst = Path(dst).absolute().resolve() if dst else None
-    model_dir = Path('models').absolute()
+    model_dir = Path(model_dir).absolute()
+    detection_model_path = model_dir / 'yolov11m-face-dynamic.trt'
+    recognition_model_path = model_dir / 'facenet-dynamic.trt'
+
     mount_point_src = src.parent
     mount_point_dst = dst.parent if dst else None
     command = [
@@ -85,7 +92,8 @@ def run_visage(src,
                image,
                frameskip,
                log_level,
-               show):
+               show,
+               model_dir=None):
     if not Path(src).exists():
         logging.error(f'{src} does not exist. Exiting.')
         exit()
@@ -96,8 +104,8 @@ def run_visage(src,
         Path(dst).parent.mkdir(parents=True)
 
     load_docker_image()
-    load_models(image=image)
-    run_docker_image(src, dst, image, frameskip, log_level, show)
+    model_dir = load_models(image=image, model_dir=model_dir)
+    run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
 
 
 if __name__ == '__main__':
@@ -105,6 +113,7 @@ if __name__ == '__main__':
     ap.add_argument('src')
     ap.add_argument('--dst', default=None, type=str)
     ap.add_argument('--image', default='astaileyyoung/visage')
+    ap.add_argument('--model_dir', default=None, type=str)
     ap.add_argument('--frameskip', default=1)
     ap.add_argument('--show', action='store_true')
     ap.add_argument('--log_level', default="info", type=str)
@@ -128,4 +137,5 @@ if __name__ == '__main__':
                args.image,
                args.frameskip,
                args.log_level,
-               args.show)
+               args.show,
+               model_dir=args.model_dir)

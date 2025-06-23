@@ -40,7 +40,7 @@ def prepare_models(detection_model='/app/models/yolov11m-face-dynamic.onnx',
             f'--onnx={detection_model}',
             '--minShapes=images:1x3x640x640',
             '--optShapes=images:1x3x640x640',
-            '--maxShapes=images:128x3x640x640',
+            '--maxShapes=images:32x3x640x640',
             f'--saveEngine={detection_trt}',
             '--int8'
         ]
@@ -54,7 +54,7 @@ def prepare_models(detection_model='/app/models/yolov11m-face-dynamic.onnx',
             f'--onnx={recognition_model}',
             '--minShapes=input:1x160x160x3',
             '--optShapes=input:1x160x160x3',
-            '--maxShapes=input:128x160x160x3',
+            '--maxShapes=input:32x160x160x3',
             f'--saveEngine={recognition_trt}'
         ]
         with open(os.devnull, 'w') as devnull:
