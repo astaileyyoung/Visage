@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os 
+import csv
 import uuid
 import signal
 import logging
@@ -58,6 +59,10 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
 
     mount_point_src = src.parent
     mount_point_dst = dst.parent if dst else None
+    model_mount_point = f"{str(model_dir)}:/app/models"
+    app_src = str(Path(mount_point_src.parts[-1]).joinpath(src.name)) 
+    app_mount_src = f"{str(mount_point_src)}:/app/{mount_point_src.parts[-1]}"
+    app_mount_dst = f"{str(mount_point_dst)}:/app/{mount_point_dst.parts[-1]}"
     command = [
         "docker",
         "run",
@@ -67,18 +72,18 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
         "all",
         "-e",
         "NVIDIA_DRIVER_CAPABILITIES=all",
-        "-v", f"{str(model_dir)}:/app/models",
-        "-v", f"{str(mount_point_src)}:/app/{mount_point_src.parts[-1]}"
+        "-v", model_mount_point,
+        "-v", app_mount_src
     ]
     if dst:
         command.extend([
             "-v",
-            f"{str(mount_point_dst)}:/app/{mount_point_dst.parts[-1]}"
+            app_mount_dst
         ])
     command.extend([
         image,
         "/app/bin/visage",
-        str(Path(mount_point_src.parts[-1]).joinpath(src.name))
+        app_src
     ])
     if dst:
         command.append(str(Path(mount_point_dst.parts[-1]).joinpath(dst.name)))
@@ -98,6 +103,8 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
         sp.run(['docker', 'stop', '-t', '1', container_name], stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=30)
         proc.terminate()
         proc.wait()
+    
+    return container_name
 
 
 def run_visage(src, dst, image, frameskip, log_level, show, model_dir):  
@@ -125,7 +132,15 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
 
     load_docker_image()
     model_dir = load_models(image=image, model_dir=model_dir)
-    run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
+    container_name = run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
+    data = []
+    if dst.exists():
+        with open(dst, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                data.append(row)
+        dst.unlink()
+    return data, container_name
 
 
 def main():
