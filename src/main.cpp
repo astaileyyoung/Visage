@@ -23,6 +23,35 @@
 #include <pipeline.hpp>
 
 
+struct Frame {
+    cv::cuda::GpuMat img;
+    int frame_num;
+};
+
+
+struct FrameDetected {
+    std::vector<Detection> detections;
+    cv::cuda::GpuMat frame;
+    int frame_num;
+};
+
+
+constexpr int QUEUE_MAX_SIZE = 32;
+
+std::queue<Frame> frames_queue;
+std::mutex queue_mutex;
+std::condition_variable queue_cond;
+
+std::queue<FrameDetected> detections_queue;
+std::mutex detections_mutex;
+std::condition_variable detections_cond;
+
+std::atomic<bool> reader_done(false);
+std::atomic<bool> processor_done(false);
+
+std::vector<Detection> all_detections;
+
+
 spdlog::level::level_enum parse_log_level(const std::string& level) {
     if (level == "trace") return spdlog::level::trace;
     if (level == "debug") return spdlog::level::debug;
@@ -36,25 +65,159 @@ spdlog::level::level_enum parse_log_level(const std::string& level) {
 
 
 void setup_logging(spdlog::level::level_enum log_level) {
-    // 'static' means this variable is created only ONCE and keeps its value
-    // between function calls. This is our "gatekeeper".
     static bool logging_is_initialized = false;
 
-    // If we've already run this function once, just exit immediately.
     if (logging_is_initialized) {
         return;
     }
     
-    // Mark that we have run the setup.
     logging_is_initialized = true;
 
-    // Now, create all your loggers here. This block of code will now
-    // only ever execute ONCE in the entire life of your program.
     auto main_logger = spdlog::stdout_color_mt("main");
     auto processor_logger = spdlog::stdout_color_mt("image_processor");
 
     spdlog::set_level(log_level);
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
+}
+
+
+void read_frames(cv::Ptr<cv::cudacodec::VideoReader> cap, 
+                 const int total_frames, 
+                 std::shared_ptr<spdlog::logger> logger, 
+                 const int frameskip) {
+    // Create a progress bar 
+    int current_frame = 0;
+    indicators::ProgressBar bar{
+        indicators::option::BarWidth{50},
+        indicators::option::Start{"["},
+        indicators::option::Fill{"="},
+        indicators::option::Lead{">"},
+        indicators::option::Remainder{" "},
+        indicators::option::End{"]"},
+        indicators::option::PostfixText{"Processing video..."},
+        indicators::option::ForegroundColor{indicators::Color::cyan},
+        indicators::option::ShowPercentage{true},
+        indicators::option::MaxProgress{total_frames}
+    };
+
+    cv::cuda::GpuMat gpuFrame;
+    while (cap->nextFrame(gpuFrame)) {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        queue_cond.wait(lock, [] { return frames_queue.size() < QUEUE_MAX_SIZE; });
+
+        Frame f = {gpuFrame, current_frame};
+        frames_queue.push(f);
+        queue_cond.notify_all();
+        
+        current_frame++;
+        // std::cout << "Current frame: " << current_frame << std::endl;
+        bar.set_progress(current_frame); // Update the progress bar
+    }
+    reader_done = true;
+    // std::cout << "done" << std::endl;
+    queue_cond.notify_all();
+}
+
+
+void process_frames(InferencePipeline& detector,
+                    RecognitionPipeline& embedder,
+                    PreprocessParams& detection_params,
+                    PreprocessParams& recognition_params,
+                    std::shared_ptr<spdlog::logger> logger,
+                    cudaStream_t stream,
+                    int frameskip,
+                    bool show
+                    ) {
+    while (!reader_done || !frames_queue.empty()) {
+        std::unique_lock<std::mutex> lock(queue_mutex);
+        queue_cond.wait(lock, [] { return !frames_queue.empty() || reader_done.load(); });
+
+        if (reader_done) break;
+
+        Frame frame = frames_queue.front();
+        frames_queue.pop();
+        queue_cond.notify_all();
+
+        if (frame.img.empty()) {
+            std::cerr << "Error: Frame is empty. Skipping..." << std::endl;
+            continue;
+        }
+        
+        bool is_detection_frame = (frame.frame_num % frameskip == 0);
+
+        std::vector<Detection> detections;
+        if (is_detection_frame) {
+            detections = detector.run(frame.img, detection_params, frame.frame_num, stream);
+            
+            if (!detections.empty()) {
+                std::vector<torch::Tensor> embeddings = embedder.run(frame.img, detections, recognition_params, frame.frame_num, stream);
+                for (int i = 0; i < embeddings.size(); ++i) {
+                    detections[i].embedding = embeddings[i];
+                }
+            }
+        }
+
+        if (show) {
+            {
+                // Wait if queue is full.
+                std::unique_lock<std::mutex> det_lock(detections_mutex);
+                detections_cond.wait(det_lock, [] { return detections_queue.size() < QUEUE_MAX_SIZE; });
+                FrameDetected frame_det = {detections, frame.img.clone(), frame.frame_num};
+                detections_queue.push(frame_det);
+                detections_cond.notify_all();
+            }
+        } else if (is_detection_frame && !detections.empty()) {
+            all_detections.insert(all_detections.end(), detections.begin(), detections.end());
+        }
+    }
+    processor_done = true;
+    detections_cond.notify_all(); 
+}
+
+
+void show_frames(const int fps) {
+    int frame_interval = static_cast<int>(1000.0 / fps + 0.5);
+    auto show_start = std::chrono::steady_clock::now();
+
+    while (!processor_done || !detections_queue.empty()) {
+        std::unique_lock<std::mutex> lock(detections_mutex);
+        detections_cond.wait(lock, [] { return !detections_queue.empty() || processor_done.load(); });
+
+        FrameDetected frame_det = detections_queue.front();
+        detections_queue.pop();
+        detections_cond.notify_all();
+
+        cv::Mat frame;
+        frame_det.frame.download(frame);
+        if (frame.rows < 1 || frame.cols < 1) {
+            std::cerr << "Frame is empty." << std::endl;
+        } else if (frame.channels() == 4) {
+            cv::cvtColor(frame, frame, cv::COLOR_BGRA2BGR);
+        } 
+
+        if (frame.depth() == CV_16U) {
+            frame.convertTo(frame, CV_8UC3, 1.0 / 257.0);
+        }
+
+        cv::Mat drawn = frame.clone();
+        if (frame_det.detections.size() > 0) draw_detections(drawn, frame_det.detections, true);
+        
+        cv::imshow("frame", drawn);
+        auto target_time = show_start + std::chrono::milliseconds(static_cast<int>(frame_det.frame_num * frame_interval));
+
+        auto now = std::chrono::steady_clock::now();
+        int wait = std::chrono::duration_cast<std::chrono::milliseconds>(target_time - now).count();
+        if (wait > 0)
+            cv::waitKey(wait);
+        else
+            cv::waitKey(1);
+
+        for (int i = 0; i < frame_det.detections.size(); ++i) {
+            Detection det = frame_det.detections[i];
+            det.original_image.release();
+            all_detections.push_back(det);
+        }
+    }
 }
 
 
@@ -125,63 +288,34 @@ int main(int argc, char* argv[]) {
     RecognitionPipeline embedder(embedding_model_path);
     logger->debug("Instanciated embedder from: {}", embedding_model_path);
 
-    int current_frame = 1;
-    indicators::ProgressBar bar{
-        indicators::option::BarWidth{50},
-        indicators::option::Start{"["},
-        indicators::option::Fill{"="},
-        indicators::option::Lead{">"},
-        indicators::option::Remainder{" "},
-        indicators::option::End{"]"},
-        indicators::option::PostfixText{"Processing video..."},
-        indicators::option::ForegroundColor{indicators::Color::cyan},
-        indicators::option::ShowPercentage{true},
-        indicators::option::MaxProgress{total_frames}
-    };
-
     auto start_time = std::chrono::steady_clock::now();
     logger->info("Starting detection");
     logger->debug("Frameskip: {}", frameskip);
-    logger->debug("Show: {}", show);
-    std::vector<Detection> all_detections;
-    while (true) {
-        std::vector<Detection> detections;
 
-        cv::cuda::GpuMat gpuFrame;
-        cap->nextFrame(gpuFrame);
-        if (gpuFrame.empty()) break;
-
-        if (current_frame % frameskip == 0) {
-            detections = detector.run(gpuFrame, detection_params, current_frame, stream);
-            if (detections.size() > 0) {
-                std::vector<torch::Tensor> embeddings = embedder.run(gpuFrame, detections, recognition_params, current_frame, stream);
-                for (int i = 0; i < embeddings.size(); ++i) {
-                    torch::Tensor embedding = embeddings[i];
-                    Detection det = detections[i];
-                    det.embedding = embedding;
-                    all_detections.push_back(det);
-                }
-            }
-        }
-
-        // Display image
-        if (show){ 
-            cv::Mat frame;
-            gpuFrame.download(frame);
-            if (frame.channels() == 4) {
-                cv::cvtColor(frame, frame, cv::COLOR_BGRA2BGR);
-            }
-            if (detections.size() > 0) draw_detections(frame, detections, true);
-            cv::imshow("frame", frame);
-            if (cv::waitKey(fps) == 'q') {
-                break;
-            }
-        }
-
-        current_frame++;
-        bar.set_progress(current_frame);
+    std::thread reader(read_frames, 
+                       std::ref(cap),
+                       total_frames, 
+                       std::ref(logger),
+                       frameskip);
+    std::thread processor(process_frames,
+                          std::ref(detector),
+                          std::ref(embedder),  
+                          std::ref(detection_params),
+                          std::ref(recognition_params),
+                          std::ref(logger),
+                          std::ref(stream),
+                          frameskip,
+                          show);
+    if (show) {
+        std::thread viewer(show_frames, fps);
+            reader.join();
+            processor.join();
+            viewer.join();
+        } else {
+            reader.join();
+            processor.join();
     }
-
+    
     if (dst != "dummy") {
         export_detections(all_detections, dst);
     }
@@ -192,3 +326,5 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
+
