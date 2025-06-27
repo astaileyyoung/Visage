@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(VideoReader CXX)
+project(Visage CXX)
 
 add_definitions(-D__STDC_CONSTANT_MACROS)
 
@@ -47,7 +47,7 @@ add_subdirectory(include/spdlog)
 add_subdirectory(include/indicators)
 
 # Macro for adding targets
-function(add_videoreader_target name sources)
+function(add_visage_target name sources)
     add_executable(${name} ${sources})
     set_property(TARGET ${name} PROPERTY RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
     target_include_directories(${name} PRIVATE
@@ -77,4 +77,4 @@ endfunction()
 
 add_compile_options(-Wno-deprecated-declarations)
 
-add_videoreader_target(visage "src/main.cpp;src/pipeline.cpp;src/utils.cpp;src/image_processor.cpp;src/trt_infer.cpp;src/ops.cpp")
+add_visage_target(visage "src/main.cpp;src/pipeline.cpp;src/utils.cpp;src/image_processor.cpp;src/trt_infer.cpp;src/ops.cpp")
