@@ -408,11 +408,12 @@ std::vector<Detection> ImageProcessor::format_data(const std::vector<std::pair<t
 }
 
 
-void ImageProcessor::preprocess(const cv::cuda::GpuMat& img, 
+FrameTransform ImageProcessor::preprocess(const cv::cuda::GpuMat& img, 
                               PreprocessParams params,
                               float* buffer,
                               cudaStream_t& stream) {
-    this->input_size = img.size();
+    FrameTransform tf{};
+    tf.input_size = img.size();
 
     cv::cuda::Stream cv_stream = cv::cuda::StreamAccessor::wrapStream(stream);
     cv::cuda::GpuMat rgb;
@@ -430,9 +431,9 @@ void ImageProcessor::preprocess(const cv::cuda::GpuMat& img,
     if (params.mode == PreprocessingMode::LETTERBOX) {
         std::vector<int> new_shape = {params.target_width, params.target_height};
         Padded data = letterbox_transform(rgb, new_shape);
-        ratio = data.r;
-        left_pad = data.left_pad;
-        top_pad = data.top_pad;
+        tf.ratio = data.r;
+        tf.left_pad = data.left_pad;
+        tf.top_pad = data.top_pad;
         processed = data.img;
     } else if (params.mode == PreprocessingMode::DIRECT_RESIZE) {
         cv::cuda::resize(rgb, 
@@ -442,6 +443,9 @@ void ImageProcessor::preprocess(const cv::cuda::GpuMat& img,
                          0, 
                          cv::INTER_LINEAR,
                          cv_stream);
+        tf.ratio = 1.0f;
+        tf.left_pad = 0;
+        tf.top_pad = 0;
     }
 
     cv::cuda::GpuMat final_buffer;
@@ -456,10 +460,13 @@ void ImageProcessor::preprocess(const cv::cuda::GpuMat& img,
     else {
         reshape_mat(final_buffer, params.target_width, params.target_height, buffer);
     }
+    return tf;
 }
 
 
 std::vector<Detection> ImageProcessor::postprocess(Predictions pred) {
+    FrameTransform tf = pred.transform;
+
     std::vector<std::pair<torch::Tensor, float>> output;
 
     torch::Tensor predictions = pred.raw_predictions.clone();
@@ -469,8 +476,8 @@ std::vector<Detection> ImageProcessor::postprocess(Predictions pred) {
     torch::Tensor detections_tensor = boxes[0];
     logger->debug("Completed nms. Detections: {}", detections_tensor.size(0));
 
-    int original_h = input_size.height;
-    int original_w = input_size.width;
+    int original_h = tf.input_size.height;
+    int original_w = tf.input_size.width;
 
     for (int i = 0; i < detections_tensor.sizes()[0]; ++i) {
         torch::Tensor detection_raw = detections_tensor.index({i, torch::indexing::Slice()});
@@ -484,16 +491,16 @@ std::vector<Detection> ImageProcessor::postprocess(Predictions pred) {
         float conf = detection_raw.index({4}).item<float>();
 
         // 1. Remove padding to get coordinates on the unpadded, resized image.
-        float x1_unpadded = x1_padded - left_pad;
-        float y1_unpadded = y1_padded - top_pad;
-        float x2_unpadded = x2_padded - left_pad;
-        float y2_unpadded = y2_padded - top_pad;
+        float x1_unpadded = x1_padded - tf.left_pad;
+        float y1_unpadded = y1_padded - tf.top_pad;
+        float x2_unpadded = x2_padded - tf.left_pad;
+        float y2_unpadded = y2_padded - tf.top_pad;
 
         // 2. Scale coordinates back to original image dimensions using the ratio.
-        int x1_orig = static_cast<int>(x1_unpadded / ratio);
-        int y1_orig = static_cast<int>(y1_unpadded / ratio);
-        int x2_orig = static_cast<int>(x2_unpadded / ratio);
-        int y2_orig = static_cast<int>(y2_unpadded / ratio);
+        int x1_orig = static_cast<int>(x1_unpadded / tf.ratio);
+        int y1_orig = static_cast<int>(y1_unpadded / tf.ratio);
+        int x2_orig = static_cast<int>(x2_unpadded / tf.ratio);
+        int y2_orig = static_cast<int>(y2_unpadded / tf.ratio);
 
         // 3. Ensure coordinates are within the original image bounds.
         int x1_final = std::max(0, x1_orig);

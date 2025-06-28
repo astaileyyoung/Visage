@@ -34,9 +34,31 @@ struct Padded {
 };
 
 
+struct FrameTransform {
+    float ratio;
+    int left_pad;
+    int top_pad;
+    cv::Size input_size;
+};
+
+
 struct Predictions {
     torch::Tensor raw_predictions;
+    FrameTransform transform;
     int frame_num = 0;
+};
+
+
+struct Frame {
+    cv::cuda::GpuMat img;
+    int frame_num;
+};
+
+
+struct FrameDetected {
+    std::vector<Detection> detections;
+    cv::cuda::GpuMat frame;
+    int frame_num;
 };
 
 

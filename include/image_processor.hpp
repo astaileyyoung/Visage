@@ -28,7 +28,7 @@ class ImageProcessor {
     public:   
         ImageProcessor(spdlog::level::level_enum level = spdlog::level::err);
 
-        void preprocess(const cv::cuda::GpuMat& img, PreprocessParams params, float* buffer, cudaStream_t& stream);
+        FrameTransform preprocess(const cv::cuda::GpuMat& img, PreprocessParams params, float* buffer, cudaStream_t& stream);
         std::vector<Detection> postprocess(Predictions pred);
 
         float getRatio() const { return ratio; }

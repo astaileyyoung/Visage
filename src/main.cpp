@@ -23,20 +23,8 @@
 #include <pipeline.hpp>
 
 
-struct Frame {
-    cv::cuda::GpuMat img;
-    int frame_num;
-};
-
-
-struct FrameDetected {
-    std::vector<Detection> detections;
-    cv::cuda::GpuMat frame;
-    int frame_num;
-};
-
-
-constexpr int QUEUE_MAX_SIZE = 32;
+constexpr int FRAME_QUEUE_SIZE = 64;
+constexpr int BATCH_SIZE = 32;
 
 std::queue<Frame> frames_queue;
 std::mutex queue_mutex;
@@ -103,7 +91,7 @@ void read_frames(cv::Ptr<cv::cudacodec::VideoReader> cap,
     cv::cuda::GpuMat gpuFrame;
     while (cap->nextFrame(gpuFrame)) {
         std::unique_lock<std::mutex> lock(queue_mutex);
-        queue_cond.wait(lock, [] { return frames_queue.size() < QUEUE_MAX_SIZE; });
+        queue_cond.wait(lock, [] { return frames_queue.size() < FRAME_QUEUE_SIZE; });
 
         Frame f = {gpuFrame, current_frame};
         frames_queue.push(f);
@@ -129,45 +117,51 @@ void process_frames(InferencePipeline& detector,
                     bool show
                     ) {
     while (!reader_done || !frames_queue.empty()) {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-        queue_cond.wait(lock, [] { return !frames_queue.empty() || reader_done.load(); });
+        std::vector<Frame> batch_frames;
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            queue_cond.wait(lock, [] { return !frames_queue.empty() || reader_done.load(); });
 
-        if (reader_done) break;
+            // Reads all frames from queue into batch up to batch size.
+            while (!frames_queue.empty() && batch_frames.size() < BATCH_SIZE) {
+                Frame f = frames_queue.front();
+                frames_queue.pop();
+                if (f.frame_num % frameskip == 0) {
+                    batch_frames.push_back(f);
+                }
+            }
+            queue_cond.notify_all();
+        }
 
-        Frame frame = frames_queue.front();
-        frames_queue.pop();
-        queue_cond.notify_all();
-
-        if (frame.img.empty()) {
-            std::cerr << "Error: Frame is empty. Skipping..." << std::endl;
+        if (batch_frames.empty()) {
+            if (reader_done) break;
             continue;
         }
-        
-        bool is_detection_frame = (frame.frame_num % frameskip == 0);
 
-        std::vector<Detection> detections;
-        if (is_detection_frame) {
-            detections = detector.run(frame.img, detection_params, frame.frame_num, stream);
-            
-            if (!detections.empty()) {
-                std::vector<torch::Tensor> embeddings = embedder.run(frame.img, detections, recognition_params, frame.frame_num, stream);
-                for (int i = 0; i < embeddings.size(); ++i) {
-                    detections[i].embedding = embeddings[i];
-                }
+        std::vector<FrameDetected> detections = detector.run(batch_frames, detection_params, stream);
+
+        if (detections.size() != batch_frames.size()) logger->error("Detections: {} | Batch frames: {}", detections.size(), batch_frames.size());
+        int num_detections = 0;
+        for (int i = 0; i < detections.size(); ++i) {
+            num_detections += detections[i].detections.size();
+        }
+
+        for (int i = 0; i < detections.size(); ++i) {
+            FrameDetected f = detections[i];
+            if (!f.detections.empty()) {
+                embedder.run(f, recognition_params, stream);
+                all_detections.insert(all_detections.end(), f.detections.begin(), f.detections.end());
             }
         }
 
-        if (show) {
-            {
-                // Wait if queue is full.
+        for (size_t i = 0; i < batch_frames.size(); ++i) {
+            if (show) {
                 std::unique_lock<std::mutex> det_lock(detections_mutex);
-                detections_cond.wait(det_lock, [] { return detections_queue.size() < QUEUE_MAX_SIZE; });
-                FrameDetected frame_det = {detections, frame.img.clone(), frame.frame_num};
+                detections_cond.wait(det_lock, [] { return detections_queue.size() < BATCH_SIZE; });
+                FrameDetected frame_det = detections[i];
                 detections_queue.push(frame_det);
                 detections_cond.notify_all();
             }
-        } else if (is_detection_frame && !detections.empty()) {
-            all_detections.insert(all_detections.end(), detections.begin(), detections.end());
         }
     }
     processor_done = true;
@@ -316,10 +310,13 @@ int main(int argc, char* argv[]) {
             processor.join();
     }
     
+    logger->debug("Finished processing {}", src);
+
     if (dst != "dummy") {
         export_detections(all_detections, dst);
     }
 
+    logger->debug("Wrote detections to: {}", dst);
     auto end_time = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     logger->info("Total runtime: {}", elapsed.count());
