@@ -8,11 +8,12 @@
 
 #include <ops.hpp>
 #include <image_processor.hpp>
+#include "spdlog/spdlog.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 
 
 // std::shared_ptr<spdlog::logger> ImageProcessor::logger = spdlog::stdout_color_mt("ImageProcessor");
-std::shared_ptr<spdlog::logger> ImageProcessor::logger;
+// std::shared_ptr<spdlog::logger> ImageProcessor::logger;
 
 
 ImageProcessor::ImageProcessor(spdlog::level::level_enum level) {
@@ -23,6 +24,7 @@ ImageProcessor::ImageProcessor(spdlog::level::level_enum level) {
 
     logger->set_level(level);
     logger->debug("ImageProcessor instance created. Log level set to: {}", spdlog::level::to_string_view(level));
+    this->logger;
 }
 
 
@@ -412,11 +414,15 @@ FrameTransform ImageProcessor::preprocess(const cv::cuda::GpuMat& img,
                               PreprocessParams params,
                               float* buffer,
                               cudaStream_t& stream) {
+    logger->debug("(Preprocess) Target Height: {} | Target Width: {}", params.target_height, params.target_width);
+
     FrameTransform tf{};
     tf.input_size = img.size();
 
     cv::cuda::Stream cv_stream = cv::cuda::StreamAccessor::wrapStream(stream);
     cv::cuda::GpuMat rgb;
+
+    logger->debug("(Preprocess) Num channels: {}", img.channels());
     if (img.channels() == 4) {
         cv::cuda::cvtColor(img, rgb, cv::COLOR_BGRA2RGB, 0, cv_stream);
     } else {
@@ -426,6 +432,7 @@ FrameTransform ImageProcessor::preprocess(const cv::cuda::GpuMat& img,
     if (rgb.type() != CV_8UC3) {
         // Convert the 16-bit image (0-65535) to an 8-bit image (0-255)
         rgb.convertTo(rgb, CV_8UC3, 255.0/65535.0, cv_stream);
+        logger->debug("(Preprocess) Converted {} to 8-bit image.", rgb.type());
     }
 
     if (params.mode == PreprocessingMode::LETTERBOX) {
@@ -447,6 +454,8 @@ FrameTransform ImageProcessor::preprocess(const cv::cuda::GpuMat& img,
         tf.left_pad = 0;
         tf.top_pad = 0;
     }
+
+    logger->debug("(Preprocess) Ratio: {} | Left Pad: {} | Top Pad: {}", tf.ratio, tf.left_pad, tf.top_pad);
 
     cv::cuda::GpuMat final_buffer;
     if (params.normalize == true) {

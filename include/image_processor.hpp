@@ -36,7 +36,7 @@ class ImageProcessor {
         int getTopPad() const { return top_pad; }
     
     private:
-        static std::shared_ptr<spdlog::logger> logger;
+        std::shared_ptr<spdlog::logger> logger;
 
         PreprocessingMode mode;
         

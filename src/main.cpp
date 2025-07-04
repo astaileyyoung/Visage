@@ -63,9 +63,11 @@ void setup_logging(spdlog::level::level_enum log_level) {
 
     auto main_logger = spdlog::stdout_color_mt("main");
     auto processor_logger = spdlog::stdout_color_mt("image_processor");
+    // auto inference_logger = spdlog::stdout_color_mt("InferencePipeline");
+    // auto embedding_logger = spdlog::stdout_color_mt("RecognitionPipeline");
 
     spdlog::set_level(log_level);
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%n] [%^%l%$] %v");
+    spdlog::set_pattern("[%H:%M:%S] [%-17n] [%^%l%$] %v");
 }
 
 
@@ -75,18 +77,22 @@ void read_frames(cv::Ptr<cv::cudacodec::VideoReader> cap,
                  const int frameskip) {
     // Create a progress bar 
     int current_frame = 0;
-    indicators::ProgressBar bar{
-        indicators::option::BarWidth{50},
-        indicators::option::Start{"["},
-        indicators::option::Fill{"="},
-        indicators::option::Lead{">"},
-        indicators::option::Remainder{" "},
-        indicators::option::End{"]"},
-        indicators::option::PostfixText{"Processing video..."},
-        indicators::option::ForegroundColor{indicators::Color::cyan},
-        indicators::option::ShowPercentage{true},
-        indicators::option::MaxProgress{total_frames}
-    };
+
+    std::unique_ptr<indicators::ProgressBar> bar;
+    if (logger->level() != spdlog::level::debug) {
+        bar = std::make_unique<indicators::ProgressBar>(
+            indicators::option::BarWidth{50},
+            indicators::option::Start{"["},
+            indicators::option::Fill{"="},
+            indicators::option::Lead{">"},
+            indicators::option::Remainder{" "},
+            indicators::option::End{"]"},
+            indicators::option::PostfixText{"Processing video..."},
+            indicators::option::ForegroundColor{indicators::Color::cyan},
+            indicators::option::ShowPercentage{true},
+            indicators::option::MaxProgress{total_frames}
+        );
+    }
 
     cv::cuda::GpuMat gpuFrame;
     while (cap->nextFrame(gpuFrame)) {
@@ -98,8 +104,8 @@ void read_frames(cv::Ptr<cv::cudacodec::VideoReader> cap,
         queue_cond.notify_all();
         
         current_frame++;
-        // std::cout << "Current frame: " << current_frame << std::endl;
-        bar.set_progress(current_frame); // Update the progress bar
+        
+        if (logger->level() != spdlog::level::debug) bar->set_progress(current_frame); // Update the progress bar
     }
     reader_done = true;
     // std::cout << "done" << std::endl;
@@ -139,6 +145,11 @@ void process_frames(InferencePipeline& detector,
         }
 
         std::vector<FrameDetected> detections = detector.run(batch_frames, detection_params, stream);
+
+        if (detections.size() != batch_frames.size()) {
+            logger->error("Detection/batch mismatch: detections.size() = {}, batch_frames.size() = {}. Skipping batch.", detections.size(), batch_frames.size());
+            continue; // or break, or throw, depending on your needs
+        }
 
         if (detections.size() != batch_frames.size()) logger->error("Detections: {} | Batch frames: {}", detections.size(), batch_frames.size());
         int num_detections = 0;
