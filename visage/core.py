@@ -59,7 +59,7 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     model_dir = Path(model_dir).absolute()
 
     mount_point_src = src.parent
-    mount_point_dst = dst.parent if dst else None
+    mount_point_dst = dst if dst else None
     model_mount_point = f"{str(model_dir)}:/app/models"
     app_src = str(Path(mount_point_src.parts[-1]).joinpath(src.name)) 
     app_mount_src = f"{str(mount_point_src)}:/app/{mount_point_src.parts[-1]}"
