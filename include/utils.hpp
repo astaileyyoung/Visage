@@ -15,6 +15,13 @@ void draw_detections(cv::Mat& frame, std::vector<Detection> detections, bool sho
 
 cv::cuda::GpuMat extract_face(cv::cuda::GpuMat& img, Detection det);
 
+void export_metadata(std::string src, 
+                     std::string dst,
+                     cv::VideoCapture cap,
+                     const int frameskip,
+                     std::string detector="yolov11m-face",
+                     std::string embedder="facenet");
+
 void export_detections(const std::vector<Detection> detections, 
                        const std::string& filename,
                        const int rounding=3);

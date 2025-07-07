@@ -5,6 +5,7 @@
 #include <opencv2/cudacodec.hpp>
 #include <opencv2/cudaarithm.hpp>
 
+#include <json.hpp>
 #include <utils.hpp>
 #include <ops.hpp>
 
@@ -78,6 +79,52 @@ cv::cuda::GpuMat extract_face(cv::cuda::GpuMat& img, Detection det) {
         return cv::cuda::GpuMat(); // Return empty Mat if the rectangle is out of bounds
     }
     return img(face_rect);
+}
+
+
+void export_metadata(std::string src, 
+                     std::string dst,
+                     cv::VideoCapture cap,
+                     const int frameskip,
+                     std::string detector,
+                     std::string embedder) {
+    nlohmann::json j;
+
+    std::filesystem::path fp(dst);
+    std::filesystem::path parent = fp.parent_path();
+    std::filesystem::path meta_dst = parent / "metadata.json";
+
+    double w = cap.get(cv::CAP_PROP_FRAME_WIDTH);
+    double h = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+    double fps = cap.get(cv::CAP_PROP_FPS);
+    double fc = cap.get(cv::CAP_PROP_FRAME_COUNT);
+    double c = cap.get(cv::CAP_PROP_FOURCC);
+
+    int width = static_cast<int>(w);
+    int height = static_cast<int>(h);
+    int framecount = static_cast<int>(fc);
+    int codec = static_cast<int>(c);
+
+    char c1 = codec & 0xFF;
+    char c2 = (codec >> 8) & 0xFF;
+    char c3 = (codec >> 16) & 0xFF;
+    char c4 = (codec >> 24) & 0xFF;
+
+    std::string codec_str{c1, c2, c3, c4};
+
+    j["filepath"] = src;
+    j["width"] = width;
+    j["height"] = height;
+    j["fps"] = std::round(fps * 1000.0) / 1000.0;
+    j["detector"] = detector;
+    j["embedder"] = embedder;
+    j["framecount"] = framecount;
+    j["frameskip"] = frameskip;
+    j["codec"] = codec_str;
+
+    std::ofstream file(meta_dst);
+    file << j.dump(4);
+    file.close();
 }
 
 

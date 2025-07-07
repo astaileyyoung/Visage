@@ -1,6 +1,7 @@
 #include <iostream>
 #include <chrono>
 #include <dlfcn.h>
+#include <filesystem>
 
 #include <torch/torch.h>
 
@@ -24,7 +25,7 @@
 
 
 constexpr int FRAME_QUEUE_SIZE = 64;
-constexpr int BATCH_SIZE = 32;
+int BATCH_SIZE = 32;
 
 std::queue<Frame> frames_queue;
 std::mutex queue_mutex;
@@ -67,7 +68,7 @@ void setup_logging(spdlog::level::level_enum log_level) {
     // auto embedding_logger = spdlog::stdout_color_mt("RecognitionPipeline");
 
     spdlog::set_level(log_level);
-    spdlog::set_pattern("[%H:%M:%S] [%-17n] [%^%l%$] %v");
+    spdlog::set_pattern("[%H:%M:%S] [%n] [%^%l%$] %v");
 }
 
 
@@ -148,7 +149,7 @@ void process_frames(InferencePipeline& detector,
 
         if (detections.size() != batch_frames.size()) {
             logger->error("Detection/batch mismatch: detections.size() = {}, batch_frames.size() = {}. Skipping batch.", detections.size(), batch_frames.size());
-            continue; // or break, or throw, depending on your needs
+            continue;
         }
 
         if (detections.size() != batch_frames.size()) logger->error("Detections: {} | Batch frames: {}", detections.size(), batch_frames.size());
@@ -242,6 +243,7 @@ int main(int argc, char* argv[]) {
         printf("\n\nshow: %s", argv[5]);
         if (std::string(argv[5]) == "-show") {
             show = true;
+            BATCH_SIZE = 1;
         }
     }
 
@@ -325,12 +327,17 @@ int main(int argc, char* argv[]) {
 
     if (dst != "dummy") {
         export_detections(all_detections, dst);
+        export_metadata(src, dst, cap_info, frameskip);
     }
 
     logger->debug("Wrote detections to: {}", dst);
     auto end_time = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     logger->info("Total runtime: {}", elapsed.count());
+
+    cap_info.release();
+    cap.release();
+    cv::destroyAllWindows();
 
     return 0;
 }

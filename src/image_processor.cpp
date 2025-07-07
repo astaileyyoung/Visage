@@ -17,9 +17,9 @@
 
 
 ImageProcessor::ImageProcessor(spdlog::level::level_enum level) {
-    logger = spdlog::get("ImageProcessor");
+    logger = spdlog::get("proc");
     if (!logger) {
-        logger = spdlog::stdout_color_mt("ImageProcessor");
+        logger = spdlog::stdout_color_mt("proc");
     }
 
     logger->set_level(level);
