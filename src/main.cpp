@@ -326,8 +326,20 @@ int main(int argc, char* argv[]) {
     logger->debug("Finished processing {}", src);
 
     if (dst != "dummy") {
-        export_detections(all_detections, dst);
-        export_metadata(src, dst, cap_info, frameskip);
+        std::filesystem::path dst_dir(dst);
+        std::error_code ec;
+
+        if (std::filesystem::create_directories(dst_dir, ec)) {
+            logger->debug("Created destination directory at: {}", dst);
+        } else if (ec) {
+            logger->error("Unable to create destination directory.\n{}", ec.message());
+        }
+
+        std::filesystem::path detection_path = dst_dir / "detections.csv";
+        std::filesystem::path metadata_path = dst_dir / "metadata.json";
+
+        export_detections(all_detections, detection_path);
+        export_metadata(src, metadata_path, cap_info, frameskip);
     }
 
     logger->debug("Wrote detections to: {}", dst);

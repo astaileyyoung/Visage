@@ -2,6 +2,7 @@
 
 import os 
 import csv
+import json
 import uuid
 import signal
 import logging
@@ -120,27 +121,35 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
     logger.setLevel(level)
 
     src = Path(src)
-    dst = Path(dst) if dst else None
+    dst = Path(dst).absolute().resolve() if dst else None
     if not src.exists():
         logger.error(f'{str(src)} does not exist. Exiting.')
         exit()
     elif src.suffix not in ('.mp4', '.mkv', '.m4v', '.avi', '.mov'):
         logger.warning(f'{src.suffix} is not a valid file extension')
 
-    if dst is not None and not dst.parent.exists():
-        dst.parent.mkdir(parents=True)
-
     load_docker_image()
     model_dir = load_models(image=image, model_dir=model_dir)
     container_name = run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
+
+    detection_path = dst / "detections.csv"
+    metadata_path = dst / "metadata.csv"
+
     data = []
-    if dst.exists():
-        with open(dst, 'r', newline='') as f:
+    if detection_path.exists():
+        with open(detection_path.absolute().resolve(), 'r', newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 data.append(row)
-        dst.unlink()
-    return data, container_name
+        detection_path.unlink()
+    
+    with open(metadata_path.absolute().resolve(), 'r') as f:
+        metadata = json.load(f)
+    metadata_path.unlink()
+    
+    dst.rmdir()
+
+    return data, metadata, container_name
 
 
 def main():
@@ -167,6 +176,9 @@ def main():
     handler.setFormatter(formatter)
     logger.handlers = []
     logger.addHandler(handler) 
+
+    if args.dst and not Path(args.dst).is_dir():
+        logger.error("Destination must be a directory, not a file. Exiting.")
 
     run_visage(src=args.src, 
                dst=args.dst,
