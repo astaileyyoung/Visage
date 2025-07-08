@@ -63,7 +63,8 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     model_mount_point = f"{str(model_dir)}:/app/models"
     app_src = str(Path(mount_point_src.parts[-1]).joinpath(src.name)) 
     app_mount_src = f"{str(mount_point_src)}:/app/{mount_point_src.parts[-1]}"
-    app_mount_dst = f"{str(mount_point_dst)}:/app/{mount_point_dst.parts[-1]}"
+    app_mount_dst = f"{str(mount_point_dst)}:{str(mount_point_dst)}"
+
     command = [
         "docker",
         "run",
@@ -133,7 +134,7 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
     container_name = run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
 
     detection_path = dst / "detections.csv"
-    metadata_path = dst / "metadata.csv"
+    metadata_path = dst / "metadata.json"
 
     data = []
     if detection_path.exists():
@@ -141,13 +142,16 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
             reader = csv.DictReader(f)
             for row in reader:
                 data.append(row)
-        detection_path.unlink()
+    else:
+        logger.error(f"{str(detection_path)} does not exist. Exiting")
+        exit()
     
-    with open(metadata_path.absolute().resolve(), 'r') as f:
-        metadata = json.load(f)
-    metadata_path.unlink()
-    
-    dst.rmdir()
+    if metadata_path.exists():
+        with open(metadata_path.absolute().resolve(), 'r') as f:
+            metadata = json.load(f)
+    else:
+        logger.error(f"{str(metadata_path)} does not exist. Exiting")
+        exit()
 
     return data, metadata, container_name
 
@@ -177,8 +181,8 @@ def main():
     logger.handlers = []
     logger.addHandler(handler) 
 
-    if args.dst and not Path(args.dst).is_dir():
-        logger.error("Destination must be a directory, not a file. Exiting.")
+    if args.dst is not None:
+        Path(args.dst).mkdir(exist_ok=True, parents=True)
 
     run_visage(src=args.src, 
                dst=args.dst,

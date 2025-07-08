@@ -329,10 +329,12 @@ int main(int argc, char* argv[]) {
         std::filesystem::path dst_dir(dst);
         std::error_code ec;
 
-        if (std::filesystem::create_directories(dst_dir, ec)) {
-            logger->debug("Created destination directory at: {}", dst);
-        } else if (ec) {
-            logger->error("Unable to create destination directory.\n{}", ec.message());
+        if (!std::filesystem::exists(dst_dir)) {
+            if (std::filesystem::create_directories(dst_dir, ec)) {
+                logger->debug("Created destination directory at: {}", dst_dir.string());
+            } else if (ec) {
+                logger->error("Unable to create destination directory.\n{}", ec.message());
+            }
         }
 
         std::filesystem::path detection_path = dst_dir / "detections.csv";
@@ -340,9 +342,17 @@ int main(int argc, char* argv[]) {
 
         export_detections(all_detections, detection_path);
         export_metadata(src, metadata_path, cap_info, frameskip);
+
+        if (!std::filesystem::exists(detection_path)) {
+            logger->error("Unable to write to {} for unknown reasons.", detection_path.string());
+        } else if (!std::filesystem::exists(metadata_path)) {
+            logger->error("Unable to write to {} for unknown reasons.", metadata_path.string());
+        } else {
+            logger->debug("Wrote detections to: {}", detection_path.string());
+            logger->debug("Wrote metadata to: {}", metadata_path.string());
+        }
     }
 
-    logger->debug("Wrote detections to: {}", dst);
     auto end_time = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     logger->info("Total runtime: {}", elapsed.count());
