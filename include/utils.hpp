@@ -25,3 +25,6 @@ void export_metadata(std::string src,
 void export_detections(const std::vector<Detection> detections, 
                        const std::string& filename,
                        const int rounding=3);
+
+void export_embeddings(std::vector<Detection> detections,
+                       std::string dst);

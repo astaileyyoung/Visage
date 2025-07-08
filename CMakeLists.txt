@@ -45,6 +45,7 @@ set_property(TARGET NVENCODE PROPERTY IMPORTED_LOCATION "/usr/local/lib/libnvidi
 
 add_subdirectory(include/spdlog)
 add_subdirectory(include/indicators)
+add_subdirectory(include/highfive)
 
 # Macro for adding targets
 function(add_visage_target name sources)
@@ -72,6 +73,7 @@ target_link_libraries(${name} PRIVATE
     indicators
     NVCUVID
     NVENCODE
+    HighFive
 )
 endfunction()
 

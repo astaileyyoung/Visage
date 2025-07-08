@@ -6,6 +6,8 @@
 #include <opencv2/cudaarithm.hpp>
 
 #include <json.hpp>
+#include <highfive/H5File.hpp>
+
 #include <utils.hpp>
 #include <ops.hpp>
 
@@ -163,4 +165,31 @@ void export_detections(const std::vector<Detection> detections,
         file << "\"\n";
     }
     file.close();
+}
+
+
+void export_embeddings(std::vector<Detection> detections,
+                       std::string dst) {
+    size_t N = detections.size();
+    size_t D = detections[0].embedding.numel();
+
+    std::vector<float> embedding_data(N * D);
+    std::vector<int> frame_nums(N), face_nums(N);
+
+    for (size_t i = 0; i < N; ++i) {
+        frame_nums[i] = detections[i].frame_num;
+        face_nums[i] = detections[i].face_num;
+
+        torch::Tensor embedding = detections[i].embedding.cpu().contiguous();
+        std::memcpy(
+            embedding_data.data() + i * D,
+            embedding.data_ptr<float>(),
+            D * sizeof(float)
+        );
+    }
+
+    HighFive::File file(dst, HighFive::File::Overwrite);
+    file.createDataSet<float>("/embeddings", HighFive::DataSpace({N, D})).write(embedding_data);
+    file.createDataSet<int>("/frame_nums", HighFive::DataSpace({N})).write(frame_nums);
+    file.createDataSet<int>("/face_nums", HighFive::DataSpace({N})).write(face_nums);
 }

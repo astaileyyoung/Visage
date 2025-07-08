@@ -250,8 +250,6 @@ int main(int argc, char* argv[]) {
     spdlog::level::level_enum level = parse_log_level(log_level);
     setup_logging(level);
     auto logger = spdlog::get("main");
-
-    logger->debug(cv::getBuildInformation());
     
     logger->debug("Num args: {}", argc);
 
@@ -339,9 +337,11 @@ int main(int argc, char* argv[]) {
 
         std::filesystem::path detection_path = dst_dir / "detections.csv";
         std::filesystem::path metadata_path = dst_dir / "metadata.json";
+        std::filesystem::path embedding_path = dst_dir / "embeddings.hdf5";
 
         export_detections(all_detections, detection_path);
         export_metadata(src, metadata_path, cap_info, frameskip);
+        export_embeddings(all_detections, embedding_path);
 
         if (!std::filesystem::exists(detection_path)) {
             logger->error("Unable to write to {} for unknown reasons.", detection_path.string());
@@ -350,6 +350,7 @@ int main(int argc, char* argv[]) {
         } else {
             logger->debug("Wrote detections to: {}", detection_path.string());
             logger->debug("Wrote metadata to: {}", metadata_path.string());
+            logger->debug("Wrote embeddings to: {}", embedding_path.string());
         }
     }
 
