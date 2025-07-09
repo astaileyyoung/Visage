@@ -153,6 +153,10 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
         logger.error(f"{str(metadata_path)} does not exist. Exiting")
         exit()
 
+    detection_path.unlink()
+    metadata_path.unlink()
+    dst.rmdir()
+    
     return data, metadata, container_name
 
 
