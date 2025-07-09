@@ -340,8 +340,11 @@ int main(int argc, char* argv[]) {
         std::filesystem::path detection_path = dst_dir / "detections.csv";
         std::filesystem::path metadata_path = dst_dir / "metadata.json";
 
+        std::filesystem::path p = src;
+        std::filesystem::path abs_path = std::filesystem::path(p);
+
         export_detections(all_detections, detection_path);
-        export_metadata(src, metadata_path, cap_info, frameskip);
+        export_metadata(abs_path.string(), metadata_path, cap_info, frameskip);
 
         if (!std::filesystem::exists(detection_path)) {
             logger->error("Unable to write to {} for unknown reasons.", detection_path.string());
