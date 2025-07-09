@@ -65,10 +65,12 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     app_mount_src = f"{str(mount_point_src)}:/app/{mount_point_src.parts[-1]}"
     app_mount_dst = f"{str(mount_point_dst)}:{str(mount_point_dst)}"
 
+    user = f"{os.getuid()}:{os.getgid()}"
     command = [
         "docker",
         "run",
         "--rm",
+        "--user", user,
         "--name", container_name,
         "--gpus",
         "all",

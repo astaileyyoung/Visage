@@ -327,6 +327,8 @@ int main(int argc, char* argv[]) {
 
     if (dst != "dummy") {
         std::filesystem::path dst_dir(dst);
+        logger->debug("Destination dir: {}", dst_dir.string());
+    
         std::error_code ec;
 
         if (!std::filesystem::exists(dst_dir)) {
