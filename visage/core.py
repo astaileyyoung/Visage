@@ -58,6 +58,9 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     dst = Path(dst).absolute().resolve() if dst else None
     model_dir = Path(model_dir).absolute()
 
+    if dst is not None:
+        dst.mkdir(exist_ok=True)
+        
     mount_point_src = src.parent
     mount_point_dst = dst
     model_mount_point = f"{str(model_dir)}:/app/models"
