@@ -6,6 +6,11 @@
 #include <opencv2/cudaarithm.hpp>
 
 #include <json.hpp>
+#include <highfive/H5File.hpp>
+
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h" // for console logging
+
 #include <utils.hpp>
 #include <ops.hpp>
 
@@ -163,4 +168,49 @@ void export_detections(const std::vector<Detection> detections,
         file << "\"\n";
     }
     file.close();
+}
+
+
+void export_embeddings(std::vector<Detection> detections,
+                       std::string dst) {
+    auto logger = spdlog::get("util");
+
+    size_t N = detections.size();
+    size_t D = detections[0].embedding.numel();
+
+    logger->debug("N: {} | D: {}", N, D);
+
+    std::vector<float> embedding_data(N * D);
+    std::vector<int> frame_nums(N), face_nums(N);
+
+    logger->debug("Embedding vector: {} | Frame nums: {}", embedding_data.size(), frame_nums.size());
+
+    for (size_t i = 0; i < N; ++i) {
+        frame_nums[i] = detections[i].frame_num;
+        face_nums[i] = detections[i].face_num;
+
+        torch::Tensor embedding = detections[i].embedding.cpu().contiguous();
+        std::memcpy(
+            embedding_data.data() + i * D,
+            embedding.data_ptr<float>(),
+            D * sizeof(float)
+        );
+    }
+
+    std::vector<std::vector<float>> embedding_matrix(N, std::vector<float>(D));
+    for (size_t i = 0; i < N; ++i) {
+        std::memcpy(embedding_matrix[i].data(), embedding_data.data() + i * D, D * sizeof(float));
+    }
+
+    logger->debug("Frame nums: {} | Face nums: {}", frame_nums.size(), face_nums.size());
+
+    HighFive::File file(dst, HighFive::File::Overwrite);
+    file.createDataSet<float>("/embeddings", HighFive::DataSpace(std::vector<size_t>{N, D})).write(embedding_matrix);
+    logger->debug("Created embedding dataset.");
+
+    file.createDataSet<int>("/frame_nums", HighFive::DataSpace(std::vector<size_t>{N})).write(frame_nums);
+    logger->debug("Created frame dataset.");
+
+    file.createDataSet<int>("/face_nums", HighFive::DataSpace(std::vector<size_t>{N})).write(face_nums);
+    logger->debug("Created face_num dataset.");
 }

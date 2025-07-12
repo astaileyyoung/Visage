@@ -38,6 +38,7 @@ RUN apt-get clean && apt-get update && \
     libgtk-3-0 \
     cuda-nvcc-11-8 \
     libnpp-dev-11-8 \
+    libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CC=gcc-9
@@ -161,7 +162,9 @@ ENV Torch_DIR=/opt/libtorch/libtorch/share/cmake/Torch
 RUN ln -s /opt/TensorRT-8.6.1.6/targets/x86_64-linux-gnu/bin/trtexec /usr/bin/trtexec && \
     ln -s /usr/lib/x86_64-linux-gnu/libnvcuvid.so.1 /usr/local/lib/libnvcuvid.so && \
     ln -s /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.1 /usr/local/lib/libnvidia-encode.so && \
-    rm -rf /app/models
+    rm -rf /app/models && \
+    rm -f /opt/conda/envs/visage/lib/libstdc++.so.6 && \
+    ln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/conda/envs/visage/lib/libstdc++.so.6
 
 WORKDIR /app 
 # RUN rm -rf build && mkdir build && cd build && cmake .. && make -j"$(nproc)"

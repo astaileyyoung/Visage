@@ -64,6 +64,7 @@ void setup_logging(spdlog::level::level_enum log_level) {
 
     auto main_logger = spdlog::stdout_color_mt("main");
     auto processor_logger = spdlog::stdout_color_mt("image_processor");
+    auto utils_logger = spdlog::stdout_color_mt("util");
     // auto inference_logger = spdlog::stdout_color_mt("InferencePipeline");
     // auto embedding_logger = spdlog::stdout_color_mt("RecognitionPipeline");
 
@@ -250,8 +251,6 @@ int main(int argc, char* argv[]) {
     spdlog::level::level_enum level = parse_log_level(log_level);
     setup_logging(level);
     auto logger = spdlog::get("main");
-
-    logger->debug(cv::getBuildInformation());
     
     logger->debug("Num args: {}", argc);
 
@@ -341,12 +340,14 @@ int main(int argc, char* argv[]) {
 
         std::filesystem::path detection_path = dst_dir / "detections.csv";
         std::filesystem::path metadata_path = dst_dir / "metadata.json";
+        std::filesystem::path embedding_path = dst_dir / "embeddings.hdf5";
 
         std::filesystem::path p = src;
         std::filesystem::path abs_path = std::filesystem::path(p);
 
         export_detections(all_detections, detection_path);
         export_metadata(abs_path.string(), metadata_path, cap_info, frameskip);
+        export_embeddings(all_detections, embedding_path);
 
         if (!std::filesystem::exists(detection_path)) {
             logger->error("Unable to write to {} for unknown reasons.", detection_path.string());
@@ -355,6 +356,7 @@ int main(int argc, char* argv[]) {
         } else {
             logger->debug("Wrote detections to: {}", detection_path.string());
             logger->debug("Wrote metadata to: {}", metadata_path.string());
+            logger->debug("Wrote embeddings to: {}", embedding_path.string());
         }
     }
 
