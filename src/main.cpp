@@ -64,6 +64,7 @@ void setup_logging(spdlog::level::level_enum log_level) {
 
     auto main_logger = spdlog::stdout_color_mt("main");
     auto processor_logger = spdlog::stdout_color_mt("image_processor");
+    auto utils_logger = spdlog::stdout_color_mt("util");
     // auto inference_logger = spdlog::stdout_color_mt("InferencePipeline");
     // auto embedding_logger = spdlog::stdout_color_mt("RecognitionPipeline");
 
