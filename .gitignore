@@ -8,3 +8,4 @@ scripts/sample_videos.zip
 bin
 dist
 *egg-info
+notebooks/tflite2onnx
