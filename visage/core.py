@@ -106,13 +106,15 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     try:
         proc = sp.Popen(command, preexec_fn=os.setsid)
         proc.wait()
+        exit_code = proc.returncode
     except KeyboardInterrupt:
         logger.info('Exiting docker.')
         sp.run(['docker', 'stop', '-t', '1', container_name], stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=30)
         proc.terminate()
         proc.wait()
+        exit_code = proc.returncode
     
-    return container_name
+    return container_name, exit_code
 
 
 def run_visage(src, dst, image, frameskip, log_level, show, model_dir):  
@@ -142,7 +144,14 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
 
     load_docker_image()
     model_dir = load_models(image=image, model_dir=model_dir)
-    container_name = run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
+    container_name, exit_code = run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
+
+    if exit_code == 255:
+        logger.error("Video failed to open")
+        raise RuntimeError("Video failed to open")
+    elif exit_code != 0:
+        logger.error(f"Docker container exited with code {exit_code}")
+        raise RuntimeError(f"Visage failed for {src} (exit code {exit_code})")
 
     detection_path = dst / "detections.csv"
     metadata_path = dst / "metadata.json"
@@ -156,7 +165,7 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
                 data.append(row)
     else:
         logger.error(f"{str(detection_path)} does not exist. Exiting")
-        exit()
+        raise FileNotFoundError(f"{detection_path}")
     
     if metadata_path.exists():
         with open(metadata_path.absolute().resolve(), 'r') as f:
