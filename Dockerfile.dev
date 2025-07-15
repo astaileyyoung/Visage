@@ -39,7 +39,25 @@ RUN apt-get clean && apt-get update && \
     cuda-nvcc-11-8 \
     libnpp-dev-11-8 \
     libhdf5-dev \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    gnupg \
+    libgl1-mesa-dev \
+    libglew-dev \
+    libopencv-dev \
+    mesa-utils \
+    libx11-dev \
+    libxext-dev \   
+    libxrandr-dev \
+    libxi-dev \
+    libxxf86vm-dev \
+    libxcursor-dev && \
+    apt-get update && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN wget https://github.com/bazelbuild/bazel/releases/download/6.5.0/bazel-6.5.0-installer-linux-x86_64.sh && \
+    chmod +x bazel-6.5.0-installer-linux-x86_64.sh && \
+    ./bazel-6.5.0-installer-linux-x86_64.sh && \
+    rm bazel-6.5.0-installer-linux-x86_64.sh
 
 ENV CC=gcc-9
 ENV CXX=g++-9
@@ -126,6 +144,13 @@ COPY --from=libtorch-extract /opt/libtorch /opt/libtorch
 RUN wget https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/secure/8.6.1/tars/TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-11.8.tar.gz -O /tmp/TensorRT.tar.gz && \
     tar -xzf /tmp/TensorRT.tar.gz -C /opt && \
     rm /tmp/TensorRT.tar.gz
+
+# --- MEDIAPIPE SECTION ---
+WORKDIR /workspace
+RUN git clone --depth 1 https://github.com/google/mediapipe.git
+
+WORKDIR /workspace/mediapipe
+RUN bazel build -c opt --define MEDIAPIPE_DISABLE_GPU=0 mediapipe/examples/desktop/face_mesh:face_mesh_gpu
 
 WORKDIR /app 
 COPY . . 
