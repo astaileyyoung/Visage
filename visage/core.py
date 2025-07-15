@@ -147,10 +147,8 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
     container_name, exit_code = run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
 
     if exit_code == 255:
-        logger.error("Video failed to open")
         raise RuntimeError("Video failed to open")
     elif exit_code != 0:
-        logger.error(f"Docker container exited with code {exit_code}")
         raise RuntimeError(f"Visage failed for {src} (exit code {exit_code})")
 
     detection_path = dst / "detections.csv"
