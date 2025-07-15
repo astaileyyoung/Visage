@@ -144,7 +144,7 @@ void export_detections(const std::vector<Detection> detections,
     }
 
     file << std::fixed << std::setprecision(9);
-    file << "frame_num,face_num,x1,y1,x2,y2,confidence";
+    file << "frame_num,face_num,x1,y1,x2,y2,confidence\n";
     for (int i = 0; i < detections.size(); ++i) {
         const Detection det = detections[i];
         file << det.frame_num << ',';
