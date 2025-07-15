@@ -4,11 +4,12 @@ import os
 import csv
 import json
 import uuid
-import signal
 import logging
 import subprocess as sp
 from pathlib import Path 
 from argparse import ArgumentParser 
+
+import h5py
 
 
 logger = logging.getLogger("visage")
@@ -140,6 +141,7 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
 
     detection_path = dst / "detections.csv"
     metadata_path = dst / "metadata.json"
+    embedding_path = dst / "embeddings.hdf5"
 
     data = []
     if detection_path.exists():
@@ -157,8 +159,16 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
     else:
         logger.error(f"{str(metadata_path)} does not exist. Exiting")
         exit()
+    
+    if embedding_path.exists():
+        with h5py.File(embedding_path, 'r') as f:
+            embeddings = f['embeddings'][:]
+            frame_nums = f['frame_nums'][:]
+            face_nums = f['face_nums'][:]
+    
+    embedding_data = (frame_nums, face_nums, embeddings)
 
-    return data, metadata, container_name
+    return data, metadata, embedding_data, container_name
 
 
 def main():

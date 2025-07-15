@@ -144,7 +144,7 @@ void export_detections(const std::vector<Detection> detections,
     }
 
     file << std::fixed << std::setprecision(9);
-    file << "frame_num,face_num,x1,y1,x2,y2,confidence,embedding\n";
+    file << "frame_num,face_num,x1,y1,x2,y2,confidence";
     for (int i = 0; i < detections.size(); ++i) {
         const Detection det = detections[i];
         file << det.frame_num << ',';
@@ -157,14 +157,6 @@ void export_detections(const std::vector<Detection> detections,
         file << ",";
         file << cleanRounding(det.confidence, rounding);
         file <<",\"";
-
-        torch::Tensor embedding_cpu = det.embedding.cpu().contiguous().view(-1);
-        const float* embedding_ptr = embedding_cpu.data_ptr<float>();
-        int embedding_size = embedding_cpu.numel();
-        for (int j = 0; j < embedding_size; ++j) {
-            file << embedding_ptr[j];
-            if (j < embedding_size - 1) file << ",";
-        }
         file << "\"\n";
     }
     file.close();
