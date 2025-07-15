@@ -142,9 +142,13 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
 ENV PATH=$CONDA_DIR/bin:$PATH
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# Accept Anaconda ToS for required channels
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
+ && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
 # Create and activate a conda environment
 RUN conda update -n base -c defaults conda && \
-    conda create -y -n visage python=3.10 numpy pip && \
+    conda create -y -n visage python=3.10 numpy pip h5py && \
     conda clean -afy && conda install -n visage -c conda-forge opencv numpy -y
 
 ENV CONDA_DEFAULT_ENV=visage
