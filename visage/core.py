@@ -125,7 +125,12 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
     }
     # Fallback to INFO if log_level is not recognized
     level = levels.get(str(log_level).lower(), logging.INFO)
-    logger.setLevel(level)
+    handler = logging.StreamHandler()
+    handler.setLevel(level)
+    formatter = logging.Formatter('[%(asctime)s] [cineface] [%(levelname)s]: %(message)s',
+                                  datefmt='%H:%M:%S')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
     src = Path(src)
     dst = Path(dst).absolute().resolve() if dst else None
