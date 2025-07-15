@@ -156,8 +156,7 @@ void export_detections(const std::vector<Detection> detections,
         }
         file << ",";
         file << cleanRounding(det.confidence, rounding);
-        file <<",\"";
-        file << "\"\n";
+        file << "\n";
     }
     file.close();
 }
