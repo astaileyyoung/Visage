@@ -62,6 +62,13 @@ struct FrameDetected {
 };
 
 
+struct Metadata {
+    int width;
+    int height;
+    double fps;
+};
+
+
 torch::Tensor box_area_cpp(const torch::Tensor& boxes);
 
 torch::Tensor box_iou_cpp(const torch::Tensor& boxes1, const torch::Tensor& boxes2);

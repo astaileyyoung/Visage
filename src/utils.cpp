@@ -5,6 +5,12 @@
 #include <opencv2/cudacodec.hpp>
 #include <opencv2/cudaarithm.hpp>
 
+#include <json.hpp>
+#include <highfive/H5File.hpp>
+
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/stdout_color_sinks.h" // for console logging
+
 #include <utils.hpp>
 #include <ops.hpp>
 
@@ -81,6 +87,52 @@ cv::cuda::GpuMat extract_face(cv::cuda::GpuMat& img, Detection det) {
 }
 
 
+void export_metadata(std::string src, 
+                     std::string dst,
+                     cv::VideoCapture cap,
+                     const int frameskip,
+                     std::string detector,
+                     std::string embedder) {
+    nlohmann::json j;
+
+    std::filesystem::path fp(dst);
+    std::filesystem::path parent = fp.parent_path();
+    std::filesystem::path meta_dst = parent / "metadata.json";
+
+    double w = cap.get(cv::CAP_PROP_FRAME_WIDTH);
+    double h = cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+    double fps = cap.get(cv::CAP_PROP_FPS);
+    double fc = cap.get(cv::CAP_PROP_FRAME_COUNT);
+    double c = cap.get(cv::CAP_PROP_FOURCC);
+
+    int width = static_cast<int>(w);
+    int height = static_cast<int>(h);
+    int framecount = static_cast<int>(fc);
+    int codec = static_cast<int>(c);
+
+    char c1 = codec & 0xFF;
+    char c2 = (codec >> 8) & 0xFF;
+    char c3 = (codec >> 16) & 0xFF;
+    char c4 = (codec >> 24) & 0xFF;
+
+    std::string codec_str{c1, c2, c3, c4};
+
+    j["filepath"] = src;
+    j["width"] = width;
+    j["height"] = height;
+    j["fps"] = std::round(fps * 1000.0) / 1000.0;
+    j["detector"] = detector;
+    j["embedder"] = embedder;
+    j["framecount"] = framecount;
+    j["frameskip"] = frameskip;
+    j["codec"] = codec_str;
+
+    std::ofstream file(meta_dst);
+    file << j.dump(4);
+    file.close();
+}
+
+
 void export_detections(const std::vector<Detection> detections, 
                        const std::string& filename,
                        const int rounding) {
@@ -92,7 +144,7 @@ void export_detections(const std::vector<Detection> detections,
     }
 
     file << std::fixed << std::setprecision(9);
-    file << "frame_num,face_num,x1,y1,x2,y2,confidence,embedding\n";
+    file << "frame_num,face_num,x1,y1,x2,y2,confidence\n";
     for (int i = 0; i < detections.size(); ++i) {
         const Detection det = detections[i];
         file << det.frame_num << ',';
@@ -104,16 +156,52 @@ void export_detections(const std::vector<Detection> detections,
         }
         file << ",";
         file << cleanRounding(det.confidence, rounding);
-        file <<",\"";
-
-        torch::Tensor embedding_cpu = det.embedding.cpu().contiguous().view(-1);
-        const float* embedding_ptr = embedding_cpu.data_ptr<float>();
-        int embedding_size = embedding_cpu.numel();
-        for (int j = 0; j < embedding_size; ++j) {
-            file << embedding_ptr[j];
-            if (j < embedding_size - 1) file << ",";
-        }
-        file << "\"\n";
+        file << "\n";
     }
     file.close();
+}
+
+
+void export_embeddings(std::vector<Detection> detections,
+                       std::string dst) {
+    auto logger = spdlog::get("util");
+
+    size_t N = detections.size();
+    size_t D = detections[0].embedding.numel();
+
+    logger->debug("N: {} | D: {}", N, D);
+
+    std::vector<float> embedding_data(N * D);
+    std::vector<int> frame_nums(N), face_nums(N);
+
+    logger->debug("Embedding vector: {} | Frame nums: {}", embedding_data.size(), frame_nums.size());
+
+    for (size_t i = 0; i < N; ++i) {
+        frame_nums[i] = detections[i].frame_num;
+        face_nums[i] = detections[i].face_num;
+
+        torch::Tensor embedding = detections[i].embedding.cpu().contiguous();
+        std::memcpy(
+            embedding_data.data() + i * D,
+            embedding.data_ptr<float>(),
+            D * sizeof(float)
+        );
+    }
+
+    std::vector<std::vector<float>> embedding_matrix(N, std::vector<float>(D));
+    for (size_t i = 0; i < N; ++i) {
+        std::memcpy(embedding_matrix[i].data(), embedding_data.data() + i * D, D * sizeof(float));
+    }
+
+    logger->debug("Frame nums: {} | Face nums: {}", frame_nums.size(), face_nums.size());
+
+    HighFive::File file(dst, HighFive::File::Overwrite);
+    file.createDataSet<float>("/embeddings", HighFive::DataSpace(std::vector<size_t>{N, D})).write(embedding_matrix);
+    logger->debug("Created embedding dataset.");
+
+    file.createDataSet<int>("/frame_nums", HighFive::DataSpace(std::vector<size_t>{N})).write(frame_nums);
+    logger->debug("Created frame dataset.");
+
+    file.createDataSet<int>("/face_nums", HighFive::DataSpace(std::vector<size_t>{N})).write(face_nums);
+    logger->debug("Created face_num dataset.");
 }

@@ -2,12 +2,14 @@
 
 import os 
 import csv
+import json
 import uuid
-import signal
 import logging
 import subprocess as sp
 from pathlib import Path 
 from argparse import ArgumentParser 
+
+import h5py
 
 
 logger = logging.getLogger("visage")
@@ -57,16 +59,22 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     dst = Path(dst).absolute().resolve() if dst else None
     model_dir = Path(model_dir).absolute()
 
+    if dst is not None:
+        dst.mkdir(exist_ok=True)
+        
     mount_point_src = src.parent
-    mount_point_dst = dst.parent if dst else None
+    mount_point_dst = dst
     model_mount_point = f"{str(model_dir)}:/app/models"
     app_src = str(Path(mount_point_src.parts[-1]).joinpath(src.name)) 
     app_mount_src = f"{str(mount_point_src)}:/app/{mount_point_src.parts[-1]}"
-    app_mount_dst = f"{str(mount_point_dst)}:/app/{mount_point_dst.parts[-1]}"
+    app_mount_dst = f"{str(mount_point_dst)}:{str(mount_point_dst)}"
+
+    user = f"{os.getuid()}:{os.getgid()}"
     command = [
         "docker",
         "run",
         "--rm",
+        "--user", user,
         "--name", container_name,
         "--gpus",
         "all",
@@ -86,7 +94,7 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
         app_src
     ])
     if dst:
-        command.append(str(Path(mount_point_dst.parts[-1]).joinpath(dst.name)))
+        command.append(str(dst))
     else:
         command.append("dummy")
     
@@ -98,13 +106,15 @@ def run_docker_image(src, dst, image, frameskip, log_level, show, model_dir):
     try:
         proc = sp.Popen(command, preexec_fn=os.setsid)
         proc.wait()
+        exit_code = proc.returncode
     except KeyboardInterrupt:
         logger.info('Exiting docker.')
         sp.run(['docker', 'stop', '-t', '1', container_name], stdout=sp.DEVNULL, stderr=sp.DEVNULL, timeout=30)
         proc.terminate()
         proc.wait()
+        exit_code = proc.returncode
     
-    return container_name
+    return container_name, exit_code
 
 
 def run_visage(src, dst, image, frameskip, log_level, show, model_dir):  
@@ -117,30 +127,60 @@ def run_visage(src, dst, image, frameskip, log_level, show, model_dir):
     }
     # Fallback to INFO if log_level is not recognized
     level = levels.get(str(log_level).lower(), logging.INFO)
-    logger.setLevel(level)
+    handler = logging.StreamHandler()
+    handler.setLevel(level)
+    formatter = logging.Formatter('[%(asctime)s] [cineface] [%(levelname)s]: %(message)s',
+                                  datefmt='%H:%M:%S')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
     src = Path(src)
-    dst = Path(dst) if dst else None
+    dst = Path(dst).absolute().resolve() if dst else None
     if not src.exists():
         logger.error(f'{str(src)} does not exist. Exiting.')
         exit()
     elif src.suffix not in ('.mp4', '.mkv', '.m4v', '.avi', '.mov'):
         logger.warning(f'{src.suffix} is not a valid file extension')
 
-    if dst is not None and not dst.parent.exists():
-        dst.parent.mkdir(parents=True)
-
     load_docker_image()
     model_dir = load_models(image=image, model_dir=model_dir)
-    container_name = run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
+    container_name, exit_code = run_docker_image(src, dst, image, frameskip, log_level, show, model_dir)
+
+    if exit_code == 255:
+        raise RuntimeError("Video failed to open")
+    elif exit_code != 0:
+        raise RuntimeError(f"Visage failed for {src} (exit code {exit_code})")
+
+    detection_path = dst / "detections.csv"
+    metadata_path = dst / "metadata.json"
+    embedding_path = dst / "embeddings.hdf5"
+
     data = []
-    if dst.exists():
-        with open(dst, 'r', newline='') as f:
+    if detection_path.exists():
+        with open(detection_path.absolute().resolve(), 'r', newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
                 data.append(row)
-        dst.unlink()
-    return data, container_name
+    else:
+        logger.error(f"{str(detection_path)} does not exist. Exiting")
+        raise FileNotFoundError(f"{detection_path}")
+    
+    if metadata_path.exists():
+        with open(metadata_path.absolute().resolve(), 'r') as f:
+            metadata = json.load(f)
+    else:
+        logger.error(f"{str(metadata_path)} does not exist. Exiting")
+        exit()
+    
+    if embedding_path.exists():
+        with h5py.File(embedding_path, 'r') as f:
+            embeddings = f['embeddings'][:]
+            frame_nums = f['frame_nums'][:]
+            face_nums = f['face_nums'][:]
+    
+    embedding_data = (frame_nums, face_nums, embeddings)
+
+    return data, metadata, embedding_data, container_name
 
 
 def main():
@@ -167,6 +207,9 @@ def main():
     handler.setFormatter(formatter)
     logger.handlers = []
     logger.addHandler(handler) 
+
+    if args.dst is not None:
+        Path(args.dst).mkdir(exist_ok=True, parents=True)
 
     run_visage(src=args.src, 
                dst=args.dst,

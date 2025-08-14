@@ -1,5 +1,6 @@
 notebooks/sample_videos
 notebooks/sample_videos.zip
+notebooks/tflite2onnx
 build
 models
 scripts/sample_videos

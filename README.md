@@ -29,8 +29,7 @@ libtorch-1.12.1
 TensorRT-8.6.1.6  
 
 The setup process also involves copying certain header files (related predominantly to Video_Codec_SDK for HW decoding).
-These steps are demonstrated in the accompanying 
-Dockerfile.
+These steps are demonstrated in the accompanying Dockerfile.
 
 ## Usage
 Running Visage is simple
@@ -55,6 +54,17 @@ visage /home/amos/videos/MemoriesOfMurder.mkv --dst detection.csv --log_level in
 ```
 
 Running visage will automatically download the required docker image and build the TensorRT engines. Be aware that the docker image is quite large (~17GB), so it will take some time to download. Building the TensorRT engines also takes time, but this only happens during the first run. Subsequent runs will use the now existing docker image and the cached engines. 
+
+Visage sometimes has issues when displaying video. If you get the following error
+```
+Authorization required, but no authorization protocol specifieding video...                  
+terminate called after throwing an instance of 'cv::Exception'
+  what():  OpenCV(4.12.0-pre) /opencv/modules/highgui/src/window_gtk.cpp:638: error: (-2:Unspecified error) Can't initialize GTK backend in function 'cvInitSystem'
+```
+Running this command fixes the problem (at least for me)
+```
+xhost +
+```
 
 
 ## Benchmarks

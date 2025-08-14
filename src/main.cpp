@@ -1,6 +1,7 @@
 #include <iostream>
 #include <chrono>
 #include <dlfcn.h>
+#include <filesystem>
 
 #include <torch/torch.h>
 
@@ -24,7 +25,7 @@
 
 
 constexpr int FRAME_QUEUE_SIZE = 64;
-constexpr int BATCH_SIZE = 32;
+int BATCH_SIZE = 32;
 
 std::queue<Frame> frames_queue;
 std::mutex queue_mutex;
@@ -63,11 +64,12 @@ void setup_logging(spdlog::level::level_enum log_level) {
 
     auto main_logger = spdlog::stdout_color_mt("main");
     auto processor_logger = spdlog::stdout_color_mt("image_processor");
+    auto utils_logger = spdlog::stdout_color_mt("util");
     // auto inference_logger = spdlog::stdout_color_mt("InferencePipeline");
     // auto embedding_logger = spdlog::stdout_color_mt("RecognitionPipeline");
 
     spdlog::set_level(log_level);
-    spdlog::set_pattern("[%H:%M:%S] [%-17n] [%^%l%$] %v");
+    spdlog::set_pattern("[%H:%M:%S] [%n] [%^%l%$] %v");
 }
 
 
@@ -148,7 +150,7 @@ void process_frames(InferencePipeline& detector,
 
         if (detections.size() != batch_frames.size()) {
             logger->error("Detection/batch mismatch: detections.size() = {}, batch_frames.size() = {}. Skipping batch.", detections.size(), batch_frames.size());
-            continue; // or break, or throw, depending on your needs
+            continue;
         }
 
         if (detections.size() != batch_frames.size()) logger->error("Detections: {} | Batch frames: {}", detections.size(), batch_frames.size());
@@ -242,14 +244,13 @@ int main(int argc, char* argv[]) {
         printf("\n\nshow: %s", argv[5]);
         if (std::string(argv[5]) == "-show") {
             show = true;
+            BATCH_SIZE = 1;
         }
     }
 
     spdlog::level::level_enum level = parse_log_level(log_level);
     setup_logging(level);
     auto logger = spdlog::get("main");
-
-    logger->debug(cv::getBuildInformation());
     
     logger->debug("Num args: {}", argc);
 
@@ -324,13 +325,48 @@ int main(int argc, char* argv[]) {
     logger->debug("Finished processing {}", src);
 
     if (dst != "dummy") {
-        export_detections(all_detections, dst);
+        std::filesystem::path dst_dir(dst);
+        logger->debug("Destination dir: {}", dst_dir.string());
+    
+        std::error_code ec;
+
+        if (!std::filesystem::exists(dst_dir)) {
+            if (std::filesystem::create_directories(dst_dir, ec)) {
+                logger->debug("Created destination directory at: {}", dst_dir.string());
+            } else if (ec) {
+                logger->error("Unable to create destination directory.\n{}", ec.message());
+            }
+        }
+
+        std::filesystem::path detection_path = dst_dir / "detections.csv";
+        std::filesystem::path metadata_path = dst_dir / "metadata.json";
+        std::filesystem::path embedding_path = dst_dir / "embeddings.hdf5";
+
+        std::filesystem::path p = src;
+        std::filesystem::path abs_path = std::filesystem::path(p);
+
+        export_detections(all_detections, detection_path);
+        export_metadata(abs_path.string(), metadata_path, cap_info, frameskip);
+        export_embeddings(all_detections, embedding_path);
+
+        if (!std::filesystem::exists(detection_path)) {
+            logger->error("Unable to write to {} for unknown reasons.", detection_path.string());
+        } else if (!std::filesystem::exists(metadata_path)) {
+            logger->error("Unable to write to {} for unknown reasons.", metadata_path.string());
+        } else {
+            logger->debug("Wrote detections to: {}", detection_path.string());
+            logger->debug("Wrote metadata to: {}", metadata_path.string());
+            logger->debug("Wrote embeddings to: {}", embedding_path.string());
+        }
     }
 
-    logger->debug("Wrote detections to: {}", dst);
     auto end_time = std::chrono::steady_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     logger->info("Total runtime: {}", elapsed.count());
+
+    cap_info.release();
+    cap.release();
+    cv::destroyAllWindows();
 
     return 0;
 }
