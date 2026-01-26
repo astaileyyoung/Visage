@@ -42,6 +42,7 @@ RUN apt-get clean && apt-get update && \
     libjpeg-dev \
     libpng-dev \
     libtiff-dev \
+    libhdf5-dev \
     libgtk2.0-dev \
     libgtk-3-dev \
     libgtk-3-0 \
@@ -152,6 +153,10 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y libhdf5-103
+    # ln -s /usr/lib/x86_64-linux-gnu/libhdf5.so.103 /usr/lib/x86_64-linux-gnu/libhdf5_serial.so.103 && \
+    # ldconfig
+
 # Install Miniconda
 ENV CONDA_DIR=/opt/conda
 RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
@@ -161,10 +166,15 @@ ENV PATH=$CONDA_DIR/bin:$PATH
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # Create and activate a conda environment
-RUN conda update -n base -c defaults conda && \
-    conda create -y -n visage python=3.10 numpy pip && \
-    conda clean -afy && conda install -n visage -c conda-forge opencv numpy -y
-
+RUN conda create -y -n visage \
+    --override-channels \
+    -c conda-forge \
+    python=3.10 \
+    numpy \
+    pip \
+    opencv \
+    && conda clean -afy
+    
 COPY --from=builder /usr/local/lib /usr/local/lib 
 COPY --from=builder /opt/libtorch/libtorch/lib /opt/libtorch/libtorch/lib 
 COPY --from=builder /opt/TensorRT-8.6.1.6/lib /opt/TensorRT-8.6.1.6/lib
